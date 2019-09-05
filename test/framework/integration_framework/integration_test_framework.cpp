@@ -157,8 +157,9 @@ namespace integration_framework {
                                             log_manager_->getChild("Irohad"),
                                             log_,
                                             dbname)),
+        client_factory_(std::make_shared<iroha::network::ClientFactory>()),
         command_client_(
-            iroha::network::createClient<iroha::protocol::CommandService_v1>(
+            client_factory_->createClient<iroha::protocol::CommandService_v1>(
                 format_address(kLocalHost, torii_port_)),
             log_manager_->getChild("CommandClient")->getLogger()),
         query_client_(kLocalHost, torii_port_),
@@ -204,8 +205,8 @@ namespace integration_framework {
         tx_presence_cache_(std::make_shared<AlwaysMissingTxPresenceCache>()),
         yac_transport_(std::make_shared<iroha::consensus::yac::NetworkImpl>(
             async_call_,
-            [](const shared_model::interface::Peer &peer) {
-              return iroha::network::createClient<
+            [this](const shared_model::interface::Peer &peer) {
+              return client_factory_->createClient<
                   iroha::consensus::yac::proto::Yac>(peer.address());
             },
             log_manager_->getChild("ConsensusTransport")->getLogger())),
@@ -269,7 +270,7 @@ namespace integration_framework {
         shared_model::proto::TransactionBuilder()
             .creatorAccountId(kAdminId)
             .createdTime(iroha::time::now())
-            .addPeer(getAddress(), key.publicKey())
+            .addPeer(getAddress(), key.publicKey(), "")
             .createRole(kAdminRole, all_perms)
             .createRole(kDefaultRole, {})
             .createDomain(kDomain, kDefaultRole)
@@ -281,7 +282,7 @@ namespace integration_framework {
     // add fake peers
     for (const auto &fake_peer : fake_peers_) {
       genesis_tx_builder = genesis_tx_builder.addPeer(
-          fake_peer->getAddress(), fake_peer->getKeypair().publicKey());
+          fake_peer->getAddress(), fake_peer->getKeypair().publicKey(), "");
     };
     auto genesis_tx =
         genesis_tx_builder.build().signAndAddSignature(key).finish();
@@ -350,7 +351,7 @@ namespace integration_framework {
     my_key_ = keypair;
     this_peer_ =
         framework::expected::val(common_objects_factory_->createPeer(
-                                     getAddress(), keypair.publicKey()))
+                                     getAddress(), keypair.publicKey(), ""))
             .value()
             .value;
     iroha_instance_->initPipeline(keypair, maximum_proposal_size_);
@@ -652,7 +653,8 @@ namespace integration_framework {
                                            // only used when waiting a response
                                            // for a proposal request, which our
                                            // client does not do
-            log_manager_->getChild("OrderingClientTransport")->getLogger())
+            log_manager_->getChild("OrderingClientTransport")->getLogger(),
+            std::make_shared<iroha::network::ClientFactory>())
             .create(*this_peer_);
     on_demand_os_transport->onBatches(batches);
     return *this;
@@ -667,7 +669,8 @@ namespace integration_framework {
             proposal_factory_,
             [] { return std::chrono::system_clock::now(); },
             timeout,
-            log_manager_->getChild("OrderingClientTransport")->getLogger())
+            log_manager_->getChild("OrderingClientTransport")->getLogger(),
+            std::make_shared<iroha::network::ClientFactory>())
             .create(*this_peer_);
     return on_demand_os_transport->onRequestProposal(round);
   }

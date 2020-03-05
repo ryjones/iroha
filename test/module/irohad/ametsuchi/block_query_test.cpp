@@ -12,9 +12,9 @@
 #include "ametsuchi/impl/postgres_indexer.hpp"
 #include "backend/protobuf/proto_block_json_converter.hpp"
 #include "common/byteutils.hpp"
+#include "common/result.hpp"
 #include "converters/protobuf/json_proto_converter.hpp"
 #include "datetime/time.hpp"
-#include "framework/result_fixture.hpp"
 #include "framework/test_logger.hpp"
 #include "module/irohad/ametsuchi/ametsuchi_fixture.hpp"
 #include "module/irohad/ametsuchi/mock_block_storage.hpp"
@@ -289,10 +289,9 @@ TEST_F(BlockQueryTest, HasTxWithRejectedHash) {
  * @then returned top block's height is equal to the inserted one's
  */
 TEST_F(BlockQueryTest, GetTopBlockSuccess) {
-  auto top_block_opt =
-      framework::expected::val(blocks->getBlock(blocks->getTopBlockHeight()));
-  ASSERT_TRUE(top_block_opt);
-  ASSERT_EQ(top_block_opt.value().value->height(), 2);
+  auto top_block_result = blocks->getBlock(blocks->getTopBlockHeight());
+  IROHA_ASSERT_RESULT_VALUE(top_block_result);
+  ASSERT_EQ(top_block_result.assumeValue()->height(), 2);
 }
 
 /**

@@ -28,6 +28,7 @@
 #include "cryptography/blob.hpp"
 #include "cryptography/default_hash_provider.hpp"
 #include "framework/result_gtest_checkers.hpp"
+#include "framework/test_client_factory.hpp"
 #include "integration/acceptance/acceptance_fixture.hpp"
 #include "interfaces/query_responses/roles_response.hpp"
 #include "logger/logger.hpp"
@@ -36,7 +37,7 @@
 #include "main/iroha_conf_literals.hpp"
 #include "main/iroha_conf_loader.hpp"
 #include "module/shared_model/builders/protobuf/block.hpp"
-#include "network/impl/grpc_channel_builder.hpp"
+#include "network/impl/channel_factory.hpp"
 #include "torii/command_client.hpp"
 #include "torii/query_client.hpp"
 
@@ -67,50 +68,23 @@ class IrohadTest : public AcceptanceFixture {
       : kAddress("127.0.0.1"),
         kPort(50051),
         kSecurePort(55552),
-        test_data_path_(boost::filesystem::path(PATHTESTDATA)),
         keys_manager_node_(
             "node0",
-            test_data_path_,
+            temp_dir_path_,
             getIrohadTestLoggerManager()->getChild("KeysManager")->getLogger()),
         keys_manager_admin_(
             kAdminId,
-            test_data_path_,
+            temp_dir_path_,
             getIrohadTestLoggerManager()->getChild("KeysManager")->getLogger()),
         keys_manager_testuser_(
             "test@test",
-            test_data_path_,
+            temp_dir_path_,
             getIrohadTestLoggerManager()->getChild("KeysManager")->getLogger()),
         log_(getIrohadTestLoggerManager()->getLogger()) {}
 
   void SetUp() override {
-    setPaths();
     root_ca_ =
         iroha::readTextFile(path_root_certificate_.string()).assumeValue();
-
-    rapidjson::Document doc;
-    std::ifstream ifs_iroha(path_config_.string());
-    rapidjson::IStreamWrapper isw(ifs_iroha);
-    doc.ParseStream(isw);
-    ASSERT_FALSE(doc.HasParseError())
-        << "Failed to parse irohad config at " << path_config_.string();
-    db_name_ = integration_framework::getRandomDbName();
-    pgopts_ = "dbname=" + db_name_ + " "
-        + integration_framework::getPostgresCredsFromEnv().value_or(
-              doc[config_members::PgOpt].GetString());
-    // we need a separate file here in case if target environment
-    // has custom database connection options set
-    // via environment variables
-    doc[config_members::PgOpt].SetString(pgopts_.data(), pgopts_.size());
-    doc[config_members::ToriiTlsParams]
-        .GetObject()[config_members::KeyPairPath]
-        .SetString(path_tls_keypair_.string().data(),
-                   path_tls_keypair_.string().size());
-    rapidjson::StringBuffer sb;
-    rapidjson::PrettyWriter<rapidjson::StringBuffer> writer(sb);
-    doc.Accept(writer);
-    std::string config_copy_string = sb.GetString();
-    std::ofstream copy_file(config_copy_);
-    copy_file.write(config_copy_string.data(), config_copy_string.size());
 
     prepareTestData();
   }
@@ -142,7 +116,7 @@ class IrohadTest : public AcceptanceFixture {
   }
 
   void launchIroha(const std::string &parameters) {
-    iroha_process_.emplace(irohad_executable.string() + parameters);
+    iroha_process_.emplace(path_irohad_.string() + parameters);
     waitForServersReady();
     ASSERT_TRUE(iroha_process_->running());
   }
@@ -172,8 +146,8 @@ class IrohadTest : public AcceptanceFixture {
         iroha::ametsuchi::PgConnectionInit::dropWorkingDatabase(
             iroha::ametsuchi::PostgresOptions{pgopts_, db_name_, log_}));
 
-    boost::filesystem::remove_all(test_data_path_);
-    boost::filesystem::remove(config_copy_);
+    boost::filesystem::remove_all(temp_dir_path_);
+    boost::filesystem::remove(config_path_);
   }
 
   std::string params(const boost::optional<std::string> &config_path,
@@ -190,26 +164,35 @@ class IrohadTest : public AcceptanceFixture {
 
   std::string setDefaultParams() {
     return params(
-        config_copy_, path_genesis_.string(), path_keypair_node_.string(), {});
+        config_path_, path_genesis_.string(), path_keypair_node_.string(), {});
+  }
+
+  static const iroha::network::GrpcChannelParams &getChannelParams() {
+    static const auto params = [] {
+      auto params = iroha::network::getDefaultTestChannelParams();
+      params->retry_policy->max_attempts = 3u;
+      params->retry_policy->initial_backoff = 1s;
+      params->retry_policy->max_backoff = 1s;
+      params->retry_policy->backoff_multiplier = 1.0f;
+      return params;
+    }();
+    return *params;
   }
 
   torii::CommandSyncClient createToriiClient(
       bool enable_tls = false,
       const boost::optional<uint16_t> override_port = {}) {
-    uint16_t port = override_port.value_or(enable_tls ? kSecurePort : kPort);
+    const auto port = override_port.value_or(enable_tls ? kSecurePort : kPort);
 
-    std::unique_ptr<iroha::protocol::CommandService_v1::Stub> stub;
-    if (enable_tls) {
-      stub = iroha::network::createSecureClient<
-          iroha::protocol::CommandService_v1>(
-          kAddress + ":" + std::to_string(port), root_ca_);
-    } else {
-      stub = iroha::network::createClient<iroha::protocol::CommandService_v1>(
-          kAddress + ":" + std::to_string(port));
-    }
+    auto client = enable_tls
+        ? iroha::network::createSecureClient<torii::CommandSyncClient::Service>(
+              kAddress, port, root_ca_, boost::none, getChannelParams())
+        : iroha::network::createInsecureClient<
+              torii::CommandSyncClient::Service>(
+              kAddress, port, getChannelParams());
 
     return torii::CommandSyncClient(
-        std::move(stub),
+        std::move(client),
         getIrohadTestLoggerManager()->getChild("CommandClient")->getLogger());
   }
 
@@ -218,8 +201,35 @@ class IrohadTest : public AcceptanceFixture {
   }
 
   void prepareTestData() {
-    ASSERT_TRUE(boost::filesystem::create_directory(test_data_path_))
-        << "Could not create directory " << test_data_path_ << ".";
+    if (not boost::filesystem::create_directory(temp_dir_path_)) {
+      FAIL() << "Could not create directory " << test_data_path_ << ".";
+    }
+    ASSERT_TRUE(boost::filesystem::is_directory(temp_dir_path_));
+
+    rapidjson::Document doc;
+    std::ifstream ifs_iroha(source_config_path_.string());
+    rapidjson::IStreamWrapper isw(ifs_iroha);
+    doc.ParseStream(isw);
+    ASSERT_FALSE(doc.HasParseError())
+        << "Failed to parse irohad config at " << source_config_path_;
+    db_name_ = integration_framework::getRandomDbName();
+    pgopts_ = "dbname=" + db_name_ + " "
+        + integration_framework::getPostgresCredsFromEnv().value_or(
+              doc[config_members::PgOpt].GetString());
+    // we need a separate file here in case if target environment
+    // has custom database connection options set
+    // via environment variables
+    doc[config_members::PgOpt].SetString(pgopts_.data(), pgopts_.size());
+    doc[config_members::ToriiTlsParams]
+        .GetObject()[config_members::KeyPairPath]
+        .SetString(path_tls_creds_.string().data(),
+                   path_tls_creds_.string().size());
+    rapidjson::StringBuffer sb;
+    rapidjson::PrettyWriter<rapidjson::StringBuffer> writer(sb);
+    doc.Accept(writer);
+    std::string config_copy_string = sb.GetString();
+    std::ofstream copy_file(config_path_);
+    copy_file.write(config_copy_string.data(), config_copy_string.size());
 
     ASSERT_TRUE(keys_manager_admin_.createKeys(boost::none));
     ASSERT_TRUE(keys_manager_node_.createKeys(boost::none));
@@ -279,7 +289,7 @@ class IrohadTest : public AcceptanceFixture {
         shared_model::proto::TransactionBuilder()
             .creatorAccountId(kAdminId)
             .createdTime(iroha::time::now())
-            .addPeer("0.0.0.0:10001", node0_keys.publicKey())
+            .addPeer("127.0.0.1:10001", node0_keys.publicKey())
             .createRole(kAdminName, admin_perms)
             .createRole(kDefaultRole, default_perms)
             .createRole(kMoneyCreator, money_perms)
@@ -366,21 +376,7 @@ class IrohadTest : public AcceptanceFixture {
   }
 
  private:
-  void setPaths() {
-    path_irohad_ = boost::filesystem::path(PATHIROHAD);
-    irohad_executable = path_irohad_ / "irohad";
-    path_config_ = test_data_path_.parent_path() / "config.sample";
-    path_genesis_ = test_data_path_ / "genesis.block";
-    path_keypair_node_ = test_data_path_ / "node0";
-    path_tls_keypair_ = test_data_path_.parent_path() / "tls" / "correct";
-    // example certificate with CN=localhost and subjectAltName=IP:127.0.0.1
-    path_root_certificate_ =
-        test_data_path_.parent_path() / "tls" / "correct.crt";
-    config_copy_ = path_config_.string() + std::string(".copy");
-  }
-
  public:
-  boost::filesystem::path irohad_executable;
   const std::chrono::milliseconds kTimeout = 30s;
   const std::string kAddress;
   const uint16_t kPort;
@@ -402,16 +398,20 @@ class IrohadTest : public AcceptanceFixture {
   const std::chrono::seconds resubscribe_timeout = std::chrono::seconds(3);
 
  protected:
-  boost::filesystem::path path_irohad_;
-  boost::filesystem::path test_data_path_;
-  boost::filesystem::path path_config_;
-  boost::filesystem::path path_genesis_;
-  boost::filesystem::path path_keypair_node_;
-  boost::filesystem::path path_tls_keypair_;
-  boost::filesystem::path path_root_certificate_;
+  const boost::filesystem::path path_irohad_{PATH_IROHAD};
+  const boost::filesystem::path test_data_path_{PATH_TEST_DATA};
+  const boost::filesystem::path temp_dir_path_{PATH_TEMP_DIR};
+  const boost::filesystem::path source_config_path_{test_data_path_ / "config"};
+  const boost::filesystem::path path_genesis_{temp_dir_path_ / "genesis.block"};
+  const boost::filesystem::path path_keypair_node_ = temp_dir_path_ / "node0";
+  const boost::filesystem::path path_tls_creds_dir_{PATH_TORII_TLS_CREDS};
+  const boost::filesystem::path path_tls_creds_{path_tls_creds_dir_
+                                                / "correct"};
+  const boost::filesystem::path path_root_certificate_{path_tls_creds_.string()
+                                                       + ".crt"};
   std::string db_name_;
   std::string pgopts_;
-  std::string config_copy_;
+  std::string config_path_ = (temp_dir_path_ / "config").string();
   iroha::KeysManagerImpl keys_manager_node_;
   iroha::KeysManagerImpl keys_manager_admin_;
   iroha::KeysManagerImpl keys_manager_testuser_;
@@ -503,7 +503,10 @@ TEST_F(IrohadTest, SendQuery) {
   iroha::protocol::QueryResponse response;
   auto query =
       complete(baseQry(kAdminId).getRoles(), std::move(key_pair).assumeValue());
-  auto client = torii_utils::QuerySyncClient(kAddress, kPort);
+  auto client =
+      torii_utils::QuerySyncClient(iroha::network::createInsecureClient<
+                                   torii_utils::QuerySyncClient::Service>(
+          kAddress, kPort, getChannelParams()));
   client.Find(query.getTransport(), response);
   shared_model::proto::QueryResponse resp{std::move(response)};
 
@@ -533,7 +536,7 @@ TEST_F(IrohadTest, RestartWithOverwriteLedger) {
 
   iroha_process_->terminate();
 
-  launchIroha(config_copy_,
+  launchIroha(config_path_,
               path_genesis_.string(),
               path_keypair_node_.string(),
               std::string("--overwrite-ledger"));
@@ -567,7 +570,7 @@ TEST_F(IrohadTest, RestartWithoutResetting) {
 
   iroha_process_->terminate();
 
-  launchIroha(config_copy_, {}, path_keypair_node_.string(), {});
+  launchIroha(config_path_, {}, path_keypair_node_.string(), {});
 
   ASSERT_EQ(getBlockCount(), height);
 

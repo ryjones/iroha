@@ -7,10 +7,12 @@
 #define INTEGRATION_FRAMEWORK_FAKE_PEER_HPP_
 
 #include <memory>
+#include <optional>
 #include <string>
 
 #include <boost/core/noncopyable.hpp>
 #include <rxcpp/rx-observable-fwd.hpp>
+#include "common/result.hpp"
 #include "framework/integration_framework/fake_peer/network/mst_message.hpp"
 #include "framework/integration_framework/fake_peer/proposal_storage.hpp"
 #include "framework/integration_framework/fake_peer/types.hpp"
@@ -22,8 +24,9 @@
 
 namespace iroha {
   namespace network {
+    class GenericClientFactory;
     class ServerRunner;
-  }
+  }  // namespace network
 }  // namespace iroha
 
 namespace integration_framework {
@@ -47,6 +50,7 @@ namespace integration_framework {
        * @param listen_ip - IP on which this fake peer should listen
        * @param internal_port - the port for internal commulications
        * @param key - the keypair of this peer
+       * @param tls_certificate - optional TLS certificate
        * @param real_peer - the main tested peer managed by ITF
        * @param common_objects_factory - common_objects_factory
        * @param transaction_factory - transaction_factory
@@ -60,6 +64,8 @@ namespace integration_framework {
           const std::string &listen_ip,
           size_t internal_port,
           const boost::optional<shared_model::crypto::Keypair> &key,
+          std::optional<shared_model::interface::types::TLSCertificateType>
+              tls_certificate,
           std::shared_ptr<shared_model::interface::Peer> real_peer,
           const std::shared_ptr<shared_model::interface::CommonObjectsFactory>
               &common_objects_factory,
@@ -106,6 +112,10 @@ namespace integration_framework {
 
       /// Get the keypair of this peer.
       const shared_model::crypto::Keypair &getKeypair() const;
+
+      /// Get the TLS certificate of this peer.
+      const std::optional<shared_model::interface::types::TLSCertificateType>
+          &getTlsCertificate() const;
 
       /// Get interface::Peer object for this instance.
       std::shared_ptr<shared_model::interface::Peer> getThisPeer() const;
@@ -174,15 +184,18 @@ namespace integration_framework {
           const std::shared_ptr<shared_model::interface::TransactionBatch>
               &batch);
 
-      bool sendBlockRequest(const LoaderBlockRequest &request);
+      iroha::expected::Result<void, std::string> sendBlockRequest(
+          const LoaderBlockRequest &request);
 
-      size_t sendBlocksRequest(const LoaderBlocksRequest &request);
+      iroha::expected::Result<size_t, std::string> sendBlocksRequest(
+          const LoaderBlocksRequest &request);
 
       /// Send the real peer the provided batches for proposal.
-      void proposeBatches(BatchesCollection batches);
+      iroha::expected::Result<void, std::string> proposeBatches(
+          BatchesCollection batches);
 
       /// Send the real peer the provided transactions for proposal.
-      void proposeTransactions(
+      iroha::expected::Result<void, std::string> proposeTransactions(
           std::vector<std::shared_ptr<shared_model::interface::Transaction>>
               transactions);
 
@@ -232,6 +245,8 @@ namespace integration_framework {
       const std::string listen_ip_;
       size_t internal_port_;
       std::unique_ptr<shared_model::crypto::Keypair> keypair_;
+      std::optional<shared_model::interface::types::TLSCertificateType>
+          tls_certificate_;
 
       std::shared_ptr<shared_model::interface::Peer>
           this_peer_;  ///< this fake instance
@@ -239,6 +254,7 @@ namespace integration_framework {
           real_peer_;  ///< the real instance
 
       std::shared_ptr<AsyncCall> async_call_;
+      std::shared_ptr<iroha::network::GenericClientFactory> client_factory_;
 
       std::shared_ptr<MstTransport> mst_transport_;
       std::shared_ptr<YacTransport> yac_transport_;

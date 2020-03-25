@@ -26,16 +26,19 @@
 #include "framework/integration_framework/fake_peer/network/yac_network_notifier.hpp"
 #include "framework/integration_framework/fake_peer/proposal_storage.hpp"
 #include "framework/result_fixture.hpp"
+#include "framework/result_gtest_checkers.hpp"
+#include "framework/test_client_factory.hpp"
 #include "interfaces/common_objects/common_objects_factory.hpp"
 #include "logger/logger.hpp"
 #include "logger/logger_manager.hpp"
 #include "main/server_runner.hpp"
 #include "multi_sig_transactions/transport/mst_transport_grpc.hpp"
 #include "network/impl/async_grpc_client.hpp"
-#include "network/impl/grpc_channel_builder.hpp"
+#include "network/impl/client_factory.hpp"
 #include "ordering/impl/on_demand_os_client_grpc.hpp"
 #include "ordering/impl/on_demand_os_server_grpc.hpp"
 
+using namespace iroha::expected;
 using namespace shared_model::crypto;
 using namespace framework::expected;
 
@@ -43,9 +46,11 @@ static std::shared_ptr<shared_model::interface::Peer> createPeer(
     const std::shared_ptr<shared_model::interface::CommonObjectsFactory>
         &common_objects_factory,
     const std::string &address,
-    const PublicKey &key) {
+    const PublicKey &key,
+    const std::optional<shared_model::interface::types::TLSCertificateType>
+        &tls_certificate) {
   std::shared_ptr<shared_model::interface::Peer> peer;
-  common_objects_factory->createPeer(address, key)
+  common_objects_factory->createPeer(address, key, tls_certificate)
       .match([&peer](auto &&result) { peer = std::move(result.value); },
              [&address](const auto &error) {
                BOOST_THROW_EXCEPTION(
@@ -62,6 +67,8 @@ namespace integration_framework {
         const std::string &listen_ip,
         size_t internal_port,
         const boost::optional<Keypair> &key,
+        std::optional<shared_model::interface::types::TLSCertificateType>
+            tls_certificate,
         std::shared_ptr<shared_model::interface::Peer> real_peer,
         const std::shared_ptr<shared_model::interface::CommonObjectsFactory>
             &common_objects_factory,
@@ -89,11 +96,16 @@ namespace integration_framework {
           internal_port_(internal_port),
           keypair_(std::make_unique<Keypair>(
               key.value_or(DefaultCryptoAlgorithmType::generateKeypair()))),
-          this_peer_(createPeer(
-              common_objects_factory, getAddress(), keypair_->publicKey())),
+          tls_certificate_(std::move(tls_certificate)),
+          this_peer_(createPeer(common_objects_factory,
+                                getAddress(),
+                                keypair_->publicKey(),
+                                tls_certificate_)),
           real_peer_(std::move(real_peer)),
           async_call_(std::make_shared<AsyncCall>(
               log_manager_->getChild("AsyncNetworkClient")->getLogger())),
+          client_factory_(iroha::network::getTestInsecureClientFactory(
+              iroha::network::getDefaultTestChannelParams())),
           mst_transport_(std::make_shared<MstTransport>(
               async_call_,
               transaction_factory,
@@ -104,13 +116,13 @@ namespace integration_framework {
                   std::chrono::minutes(0)),
               keypair_->publicKey(),
               mst_log_manager_->getChild("State")->getLogger(),
-              mst_log_manager_->getChild("Transport")->getLogger())),
+              mst_log_manager_->getChild("Transport")->getLogger(),
+              iroha::network::makeTransportClientFactory<MstTransport>(
+                  client_factory_))),
           yac_transport_(std::make_shared<YacTransport>(
               async_call_,
-              [](const shared_model::interface::Peer &peer) {
-                return iroha::network::createClient<
-                    iroha::consensus::yac::proto::Yac>(peer.address());
-              },
+              iroha::network::makeTransportClientFactory<YacTransport>(
+                  client_factory_),
               consensus_log_manager_->getChild("Transport")->getLogger())),
           mst_network_notifier_(std::make_shared<MstNetworkNotifier>()),
           yac_network_notifier_(std::make_shared<YacNetworkNotifier>()),
@@ -137,7 +149,8 @@ namespace integration_framework {
           std::make_shared<LoaderGrpc>(shared_from_this(),
                                        log_manager_->getChild("Synchronizer")
                                            ->getChild("Transport")
-                                           ->getLogger());
+                                           ->getLogger(),
+                                       client_factory_);
       od_os_network_notifier_ =
           std::make_shared<OnDemandOsNetworkNotifier>(shared_from_this());
       od_os_transport_ = std::make_shared<OdOsTransport>(
@@ -193,9 +206,7 @@ namespace integration_framework {
       // start instance
       log_->info("starting listening server");
       auto internal_server = std::make_unique<iroha::network::ServerRunner>(
-          getAddress(),
-          log_manager_->getChild("InternalServer")->getLogger(),
-          false);
+          getAddress(), log_manager_->getChild("InternalServer"), false);
       internal_server->append(yac_transport_)
           .append(mst_transport_)
           .append(od_os_transport_)
@@ -223,6 +234,11 @@ namespace integration_framework {
 
     const Keypair &FakePeer::getKeypair() const {
       return *keypair_;
+    }
+
+    const std::optional<shared_model::interface::types::TLSCertificateType>
+        &FakePeer::getTlsCertificate() const {
+      return tls_certificate_;
     }
 
     std::shared_ptr<shared_model::interface::Peer> FakePeer::getThisPeer()
@@ -340,17 +356,18 @@ namespace integration_framework {
       sendYacState(my_votes);
     }
 
-    bool FakePeer::sendBlockRequest(const LoaderBlockRequest &request) {
-      return synchronizer_transport_->sendBlockRequest(real_peer_->address(),
-                                                       request);
+    Result<void, std::string> FakePeer::sendBlockRequest(
+        const LoaderBlockRequest &request) {
+      return synchronizer_transport_->sendBlockRequest(*real_peer_, request);
     }
 
-    size_t FakePeer::sendBlocksRequest(const LoaderBlocksRequest &request) {
-      return synchronizer_transport_->sendBlocksRequest(real_peer_->address(),
-                                                        request);
+    Result<size_t, std::string> FakePeer::sendBlocksRequest(
+        const LoaderBlocksRequest &request) {
+      return synchronizer_transport_->sendBlocksRequest(*real_peer_, request);
     }
 
-    void FakePeer::proposeBatches(BatchesCollection batches) {
+    Result<void, std::string> FakePeer::proposeBatches(
+        BatchesCollection batches) {
       std::vector<std::shared_ptr<shared_model::interface::Transaction>>
           transactions;
       for (auto &batch : batches) {
@@ -358,37 +375,45 @@ namespace integration_framework {
                   batch->transactions().end(),
                   std::back_inserter(transactions));
       }
-      proposeTransactions(std::move(transactions));
+      return proposeTransactions(std::move(transactions));
     }
 
-    void FakePeer::proposeTransactions(
+    Result<void, std::string> FakePeer::proposeTransactions(
         std::vector<std::shared_ptr<shared_model::interface::Transaction>>
             transactions) {
-      iroha::ordering::proto::BatchesRequest request;
-      for (auto &transaction : transactions) {
-        *request.add_transactions() =
-            static_cast<shared_model::proto::Transaction *>(transaction.get())
-                ->getTransport();
-      }
+      return client_factory_
+                     ->createClient<iroha::ordering::proto::OnDemandOrdering>(
+                         *real_peer_)
+                 | [&transactions](auto client) -> Result<void, std::string> {
+        iroha::ordering::proto::BatchesRequest request;
+        for (auto &transaction : transactions) {
+          *request.add_transactions() =
+              static_cast<shared_model::proto::Transaction *>(transaction.get())
+                  ->getTransport();
+        }
 
-      auto client = iroha::network::createClient<
-          iroha::ordering::proto::OnDemandOrdering>(real_peer_->address());
-      grpc::ClientContext context;
-      google::protobuf::Empty result;
-      client->SendBatches(&context, request, &result);
+        grpc::ClientContext context;
+        google::protobuf::Empty result;
+        client->SendBatches(&context, request, &result);
+        return {};
+      };
     }
 
     boost::optional<std::shared_ptr<const shared_model::interface::Proposal>>
     FakePeer::sendProposalRequest(iroha::consensus::Round round,
                                   std::chrono::milliseconds timeout) const {
+      using iroha::ordering::transport::OnDemandOsClientGrpcFactory;
       auto on_demand_os_transport =
-          iroha::ordering::transport::OnDemandOsClientGrpcFactory(
+          OnDemandOsClientGrpcFactory(
               async_call_,
               proposal_factory_,
               [] { return std::chrono::system_clock::now(); },
               timeout,
-              ordering_log_manager_->getChild("NetworkClient")->getLogger())
-              .create(*real_peer_);
+              ordering_log_manager_->getChild("NetworkClient")->getLogger(),
+              iroha::network::makeTransportClientFactory<
+                  OnDemandOsClientGrpcFactory>(client_factory_))
+              .create(*real_peer_)
+              .assumeValue();
       return on_demand_os_transport->onRequestProposal(round);
     }
 

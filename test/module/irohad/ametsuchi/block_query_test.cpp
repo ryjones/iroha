@@ -72,7 +72,7 @@ class BlockQueryTest : public AmetsuchiTest {
         TestBlockBuilder()
             .height(1)
             .transactions(txs1)
-            .prevHash(shared_model::crypto::Hash(zero_string))
+            .prevHash(iroha::createHashPadded("prev_hash"))
             .rejectedTransactions(
                 std::vector<shared_model::crypto::Hash>{rejected_hash})
             .build();
@@ -122,8 +122,8 @@ class BlockQueryTest : public AmetsuchiTest {
   std::string creator1 = "user1@test";
   std::string creator2 = "user2@test";
   std::size_t blocks_total{0};
-  std::string zero_string = std::string(32, '0');
-  shared_model::crypto::Hash rejected_hash{"rejected_tx_hash"};
+  shared_model::crypto::Hash rejected_hash{
+      iroha::createHash("rejected_tx_hash")};
 };
 
 /**
@@ -261,7 +261,8 @@ TEST_F(BlockQueryTest, HasTxWithExistingHash) {
  * @then Missing status is returned
  */
 TEST_F(BlockQueryTest, HasTxWithMissingHash) {
-  shared_model::crypto::Hash missing_tx_hash(zero_string);
+  shared_model::crypto::Hash missing_tx_hash{
+      iroha::createHashPadded("missing_tx_hash")};
   ASSERT_NO_THROW({
     auto status = std::get<tx_cache_status_responses::Missing>(
         *blocks->checkTxPresence(missing_tx_hash));

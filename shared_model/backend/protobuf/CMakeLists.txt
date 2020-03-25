@@ -7,6 +7,7 @@ add_library(shared_model_proto_backend
     impl/block.cpp
     impl/proposal.cpp
     impl/permissions.cpp
+    impl/proto_batch_meta.cpp
     impl/proto_block_factory.cpp
     impl/proto_block_json_converter.cpp
     impl/proto_query_response_factory.cpp
@@ -43,7 +44,6 @@ add_library(shared_model_proto_backend
     queries/impl/proto_get_asset_info.cpp
     queries/impl/proto_get_block.cpp
     queries/impl/proto_get_role_permissions.cpp
-    queries/impl/proto_get_roles.cpp
     queries/impl/proto_get_signatories.cpp
     queries/impl/proto_get_transactions.cpp
     queries/impl/proto_get_pending_transactions.cpp
@@ -53,7 +53,6 @@ add_library(shared_model_proto_backend
     queries/impl/proto_asset_pagination_meta.cpp
     queries/impl/proto_account_detail_pagination_meta.cpp
     queries/impl/proto_account_detail_record_id.cpp
-    queries/impl/proto_get_peers.cpp
     )
 
 if (IROHA_ROOT_PROJECT)
@@ -73,7 +72,6 @@ if (IROHA_ROOT_PROJECT)
       query_responses/impl/proto_block_query_response.cpp
       query_responses/impl/proto_block_response.cpp
       query_responses/impl/proto_block_error_response.cpp
-      query_responses/impl/proto_get_block_response.cpp
       query_responses/impl/proto_peers_response.cpp
       transaction_responses/impl/proto_tx_response.cpp
       )

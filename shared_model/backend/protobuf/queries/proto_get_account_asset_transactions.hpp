@@ -8,15 +8,34 @@
 
 #include "interfaces/queries/get_account_asset_transactions.hpp"
 
-#include "backend/protobuf/queries/proto_tx_pagination_meta.hpp"
-#include "queries.pb.h"
+#include "common/result_fwd.hpp"
+
+namespace iroha {
+  namespace protocol {
+    class GetAccountAssetTransactions;
+    class Query;
+  }  // namespace protocol
+}  // namespace iroha
 
 namespace shared_model {
+  namespace interface {
+    class TxPaginationMeta;
+  }
+
   namespace proto {
     class GetAccountAssetTransactions final
         : public interface::GetAccountAssetTransactions {
      public:
-      explicit GetAccountAssetTransactions(iroha::protocol::Query &query);
+      static iroha::expected::
+          Result<std::unique_ptr<GetAccountAssetTransactions>, std::string>
+          create(const iroha::protocol::Query &query);
+
+      GetAccountAssetTransactions(
+          const iroha::protocol::Query &query,
+          std::unique_ptr<shared_model::interface::TxPaginationMeta>
+              pagination_meta);
+
+      ~GetAccountAssetTransactions() override;
 
       const interface::types::AccountIdType &accountId() const override;
 
@@ -29,7 +48,8 @@ namespace shared_model {
 
       const iroha::protocol::GetAccountAssetTransactions
           &account_asset_transactions_;
-      const TxPaginationMeta pagination_meta_;
+      std::unique_ptr<shared_model::interface::TxPaginationMeta>
+          pagination_meta_;
     };
 
   }  // namespace proto

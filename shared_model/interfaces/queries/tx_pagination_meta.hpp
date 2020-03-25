@@ -7,6 +7,7 @@
 #define IROHA_SHARED_INTERFACE_MODEL_QUERY_TX_PAGINATION_META_HPP
 
 #include <optional>
+
 #include "interfaces/base/model_primitive.hpp"
 #include "interfaces/common_objects/types.hpp"
 
@@ -20,7 +21,7 @@ namespace shared_model {
       virtual types::TransactionsNumberType pageSize() const = 0;
 
       /// Get the first requested transaction hash, if provided.
-      virtual std::optional<types::HashType> firstTxHash() const = 0;
+      virtual const std::optional<types::HashType> &firstTxHash() const = 0;
 
       std::string toString() const override;
 

@@ -8,7 +8,9 @@
 #include "ametsuchi/impl/postgres_wsv_query.hpp"
 #include "backend/protobuf/proto_permission_to_string.hpp"
 #include "framework/common_constants.hpp"
+#include "framework/crypto_dummies.hpp"
 #include "framework/result_fixture.hpp"
+#include "framework/result_gtest_checkers.hpp"
 #include "framework/test_logger.hpp"
 #include "module/irohad/ametsuchi/ametsuchi_fixture.hpp"
 #include "module/irohad/ametsuchi/ametsuchi_mocks.hpp"
@@ -40,7 +42,7 @@ namespace iroha {
         grantable_permission =
             shared_model::interface::permissions::Grantable::kAddMySignatory;
         pubkey = std::make_unique<shared_model::interface::types::PubkeyType>(
-            std::string('1', 32));
+            shared_model::crypto::Blob::fromBinaryString("1"));
       }
 
       void SetUp() override {
@@ -85,7 +87,7 @@ namespace iroha {
        * @param result to be checked
        */
 #define CHECK_SUCCESSFUL_RESULT(result) \
-  { ASSERT_TRUE(val(result)) << err(result)->error; }
+  { expectResultValue(result); }
 
       /**
        * Check that command result contains specific error code and error
@@ -222,7 +224,8 @@ namespace iroha {
         CommandExecutorTest::SetUp();
         address =
             std::make_unique<shared_model::interface::types::AddressType>("");
-        pk = std::make_unique<shared_model::interface::types::PubkeyType>("");
+        pk = std::make_unique<shared_model::interface::types::PubkeyType>(
+            iroha::createPublicKey());
         tls_certificate = std::make_unique<
             std::optional<shared_model::interface::types::TLSCertificateType>>(
             "");
@@ -308,11 +311,9 @@ namespace iroha {
      public:
       void SetUp() override {
         CommandExecutorTest::SetUp();
-        peer = makePeer("address",
-                        shared_model::interface::types::PubkeyType{"pubkey"});
-        another_peer = makePeer(
-            "another_address",
-            shared_model::interface::types::PubkeyType{"another_pubkey"});
+        peer = makePeer("address", iroha::createPublicKey());
+        another_peer = makePeer("another_address",
+                                iroha::createPublicKey("another_pubkey"));
         createDefaultRole();
         createDefaultDomain();
         createDefaultAccount();
@@ -1082,8 +1083,6 @@ namespace iroha {
 
     class SetQuorum : public CommandExecutorTest {
      public:
-      SetQuorum() : additional_pubkey_{std::string('9', 32)} {}
-
       void SetUp() override {
         CommandExecutorTest::SetUp();
         createDefaultRole();
@@ -1094,7 +1093,8 @@ namespace iroha {
                         additional_pubkey_, account_id),
                     true));
       }
-      shared_model::interface::types::PubkeyType additional_pubkey_;
+      shared_model::interface::types::PubkeyType additional_pubkey_{
+          iroha::createPublicKeyPadded("9")};
     };
 
     /**
@@ -1155,7 +1155,8 @@ namespace iroha {
      */
     TEST_F(SetQuorum, LessSignatoriesThanNewQuorum) {
       addAllPermsWithoutRoot();
-      shared_model::interface::types::PubkeyType pk(std::string('5', 32));
+      shared_model::interface::types::PubkeyType pk{
+          iroha::createPublicKeyPadded("5")};
       CHECK_SUCCESSFUL_RESULT(execute(
           *mock_command_factory->constructAddSignatory(pk, account_id), true));
       CHECK_SUCCESSFUL_RESULT(
@@ -1825,10 +1826,7 @@ namespace iroha {
         account2_id = "id2@" + domain_id;
         CHECK_SUCCESSFUL_RESULT(
             execute(*mock_command_factory->constructCreateAccount(
-                        "id2",
-                        domain_id,
-                        shared_model::interface::types::PubkeyType(
-                            std::string('2', 32))),
+                        "id2", domain_id, iroha::createPublicKeyPadded("2")),
                     true));
       }
       shared_model::interface::types::AccountIdType account2_id;

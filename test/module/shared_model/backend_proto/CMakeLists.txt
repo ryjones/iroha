@@ -47,13 +47,6 @@ if (IROHA_ROOT_PROJECT)
       )
 endif ()
 
-addtest(shared_proto_util_test
-    shared_proto_util_test.cpp
-    )
-target_link_libraries(shared_proto_util_test
-    shared_model_proto_backend
-    )
-
 addtest(permissions_test
     permissions_test.cpp
     )

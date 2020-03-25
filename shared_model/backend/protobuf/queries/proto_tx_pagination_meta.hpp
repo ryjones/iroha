@@ -8,8 +8,17 @@
 
 #include "interfaces/queries/tx_pagination_meta.hpp"
 
+#include <optional>
+
+#include "common/result_fwd.hpp"
+#include "cryptography/hash.hpp"
 #include "interfaces/common_objects/types.hpp"
-#include "queries.pb.h"
+
+namespace iroha {
+  namespace protocol {
+    class TxPaginationMeta;
+  }
+}  // namespace iroha
 
 namespace shared_model {
   namespace proto {
@@ -17,14 +26,22 @@ namespace shared_model {
     /// Provides query metadata for any transaction list pagination.
     class TxPaginationMeta final : public interface::TxPaginationMeta {
      public:
-      explicit TxPaginationMeta(iroha::protocol::TxPaginationMeta &meta);
+      static iroha::expected::Result<std::unique_ptr<TxPaginationMeta>,
+                                     std::string>
+      create(const iroha::protocol::TxPaginationMeta &meta);
+
+      TxPaginationMeta(const iroha::protocol::TxPaginationMeta &meta,
+                       std::optional<shared_model::interface::types::HashType>
+                           first_tx_hash);
 
       interface::types::TransactionsNumberType pageSize() const override;
 
-      std::optional<interface::types::HashType> firstTxHash() const override;
+      const std::optional<interface::types::HashType> &firstTxHash()
+          const override;
 
      private:
       const iroha::protocol::TxPaginationMeta &meta_;
+      std::optional<interface::types::HashType> first_tx_hash_;
     };
   }  // namespace proto
 }  // namespace shared_model

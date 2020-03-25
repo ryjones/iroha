@@ -94,8 +94,7 @@ namespace iroha {
           auto &hash = std::get<round()>(current_hashes);
           log_->debug("Using hash: {}", hash.toString());
 
-          auto prng =
-              iroha::makeSeededPrng(hash.blob().data(), hash.blob().size());
+          auto prng = iroha::makeSeededPrng(hash.blob().byteRange());
           iroha::generatePermutation(
               permutations_[round()], std::move(prng), current_peers_.size());
         };

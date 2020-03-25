@@ -14,7 +14,9 @@
 #include "backend/protobuf/transaction_responses/proto_tx_response.hpp"
 #include "cryptography/keypair.hpp"
 #include "framework/common_constants.hpp"
+#include "interfaces/iroha_internal/error_query_response_reason.hpp"
 #include "interfaces/permissions.hpp"
+#include "interfaces/query_responses/error_query_response.hpp"
 #include "interfaces/query_responses/query_response.hpp"
 #include "interfaces/transaction_responses/tx_response.hpp"
 #include "module/shared_model/builders/protobuf/test_query_builder.hpp"
@@ -177,9 +179,10 @@ class AcceptanceFixture : public ::testing::Test {
    * @tparam ErrorResponse is type of error to check against
    * @param response to check for
    */
-  template <typename ErrorResponse>
   std::function<void(const shared_model::interface::QueryResponse &)>
-  checkQueryErrorResponse();
+  checkQueryErrorResponse(
+      shared_model::interface::QueryErrorType error_type,
+      shared_model::interface::ErrorQueryResponse::ErrorCodeType error_code);
 
   /**
    * @return unique time for this fixture

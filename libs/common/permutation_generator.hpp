@@ -15,6 +15,12 @@ namespace iroha {
   RandomEngine makeSeededPrng(const unsigned char *seed_start,
                               size_t seed_length);
 
+  template <typename T>
+  inline RandomEngine makeSeededPrng(const T &byte_range) {
+    return makeSeededPrng(byte_range.begin(),
+                          byte_range.end() - byte_range.begin());
+  }
+
   /// Helper class to seed a PRNG. For not crypto-related use only.
   class Seeder {
    public:

@@ -10,7 +10,7 @@
 #include "framework/integration_framework/integration_test_framework.hpp"
 #include "integration/acceptance/acceptance_fixture.hpp"
 #include "interfaces/permissions.hpp"
-#include "interfaces/query_responses/error_responses/stateful_failed_error_response.hpp"
+#include "utils/query_error_response_checker.hpp"
 
 using namespace integration_framework;
 using namespace shared_model;
@@ -60,7 +60,8 @@ TEST_F(AcceptanceFixture, CanNotGetRolePermissions) {
       .sendTxAwait(
           makeUserWithPerms({}),
           [](auto &block) { ASSERT_EQ(block->transactions().size(), 1); })
-      .sendQuery(query,
-                 checkQueryErrorResponse<
-                     shared_model::interface::StatefulFailedErrorResponse>());
+      .sendQuery(
+          query,
+          checkQueryErrorResponse(
+              shared_model::interface::QueryErrorType::kStatefulFailed, 2));
 }

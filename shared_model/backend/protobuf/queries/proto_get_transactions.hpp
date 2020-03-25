@@ -8,14 +8,26 @@
 
 #include "interfaces/queries/get_transactions.hpp"
 
+#include "common/result_fwd.hpp"
 #include "cryptography/hash.hpp"
-#include "queries.pb.h"
+
+namespace iroha {
+  namespace protocol {
+    class GetTransactions;
+    class Query;
+  }  // namespace protocol
+}  // namespace iroha
 
 namespace shared_model {
   namespace proto {
     class GetTransactions final : public interface::GetTransactions {
      public:
-      explicit GetTransactions(iroha::protocol::Query &query);
+      static iroha::expected::Result<std::unique_ptr<GetTransactions>,
+                                     std::string>
+      create(iroha::protocol::Query &query);
+
+      GetTransactions(iroha::protocol::Query &query,
+                      TransactionHashesType transaction_hashes);
 
       const TransactionHashesType &transactionHashes() const override;
 

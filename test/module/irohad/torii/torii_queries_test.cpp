@@ -28,12 +28,15 @@
 #include "module/shared_model/builders/protobuf/test_transaction_builder.hpp"
 #include "validators/protobuf/proto_query_validator.hpp"
 
+#include "common/result.hpp"
 #include "framework/common_constants.hpp"
+#include "framework/crypto_dummies.hpp"
+#include "framework/result_gtest_checkers.hpp"
 #include "main/server_runner.hpp"
 #include "torii/processor/query_processor_impl.hpp"
 #include "torii/query_client.hpp"
 #include "torii/query_service.hpp"
-#include "utils/query_error_response_visitor.hpp"
+#include "utils/query_error_response_checker.hpp"
 
 constexpr size_t TimesFind = 1;
 static constexpr shared_model::interface::types::TransactionsNumberType
@@ -50,8 +53,7 @@ using namespace iroha::torii;
 using namespace shared_model::interface::permissions;
 
 using wTransaction = std::shared_ptr<shared_model::interface::Transaction>;
-using ErrorQueryType =
-    shared_model::interface::QueryResponseFactory::ErrorQueryType;
+using shared_model::interface::QueryErrorType;
 
 // TODO kamilsa 22.06.18 IR-1472 rework this test so that query service is
 // mocked
@@ -186,16 +188,17 @@ TEST_F(ToriiQueriesTest, FindWhenResponseInvalid) {
 
   auto stat = torii_utils::QuerySyncClient(ip, port).Find(query.getTransport(),
                                                           response);
-  shared_model::proto::QueryResponse resp{
-      iroha::protocol::QueryResponse{response}};
   ASSERT_TRUE(stat.ok());
-  // Must return Error Response
-  ASSERT_TRUE(boost::apply_visitor(
-      shared_model::interface::QueryErrorResponseChecker<
-          shared_model::interface::StatelessFailedErrorResponse>(),
-      resp.get()));
 
-  ASSERT_EQ(query.hash(), resp.queryHash());
+  auto resp_result = shared_model::proto::QueryResponse::create(response);
+  IROHA_ASSERT_RESULT_VALUE(resp_result);
+  auto resp = std::move(resp_result).assumeValue();
+
+  // Must return Error Response
+  shared_model::interface::checkForQueryError(
+      *resp, shared_model::interface::QueryErrorType::kStatelessFailed);
+
+  ASSERT_EQ(query.hash(), resp->queryHash());
 }
 
 /**
@@ -222,7 +225,7 @@ TEST_F(ToriiQueriesTest, FindAccountWhenNoGrantPermissions) {
 
   auto *r = query_response_factory
                 ->createErrorQueryResponse(
-                    ErrorQueryType::kStatefulFailed, "", 2, model_query.hash())
+                    QueryErrorType::kStatefulFailed, "", 2, model_query.hash())
                 .release();
 
   EXPECT_CALL(*query_executor, validateAndExecute_(_))
@@ -232,18 +235,18 @@ TEST_F(ToriiQueriesTest, FindAccountWhenNoGrantPermissions) {
 
   auto stat = torii_utils::QuerySyncClient(ip, port).Find(
       model_query.getTransport(), response);
-
   ASSERT_TRUE(stat.ok());
-  shared_model::proto::QueryResponse resp{
-      iroha::protocol::QueryResponse{response}};
+
+  auto resp_result = shared_model::proto::QueryResponse::create(response);
+  IROHA_ASSERT_RESULT_VALUE(resp_result);
+  auto resp = std::move(resp_result).assumeValue();
+
   // Must be invalid due to failed stateful validation caused by no permission
   // to read account
-  ASSERT_TRUE(boost::apply_visitor(
-      shared_model::interface::QueryErrorResponseChecker<
-          shared_model::interface::StatefulFailedErrorResponse>(),
-      resp.get()));
+  shared_model::interface::checkForQueryError(
+      *resp, shared_model::interface::QueryErrorType::kStatefulFailed);
 
-  ASSERT_EQ(model_query.hash(), resp.queryHash());
+  ASSERT_EQ(model_query.hash(), resp->queryHash());
 }
 
 TEST_F(ToriiQueriesTest, FindAccountWhenHasReadPermissions) {
@@ -280,21 +283,23 @@ TEST_F(ToriiQueriesTest, FindAccountWhenHasReadPermissions) {
 
   auto stat = torii_utils::QuerySyncClient(ip, port).Find(
       model_query.getTransport(), response);
-  shared_model::proto::QueryResponse resp{
-      iroha::protocol::QueryResponse{response}};
-
   ASSERT_TRUE(stat.ok());
+
+  auto resp_result = shared_model::proto::QueryResponse::create(response);
+  IROHA_ASSERT_RESULT_VALUE(resp_result);
+  auto resp = std::move(resp_result).assumeValue();
+
   // Should not return Error Response because tx is stateless and stateful valid
   ASSERT_FALSE(response.has_error_response());
 
   ASSERT_NO_THROW({
     const auto &account_resp =
         boost::get<const shared_model::interface::AccountResponse &>(
-            resp.get());
+            resp->get());
 
     ASSERT_EQ(account_resp.account().accountId(), accountB_id);
     ASSERT_EQ(account_resp.roles().size(), 1);
-    ASSERT_EQ(model_query.hash(), resp.queryHash());
+    ASSERT_EQ(model_query.hash(), resp->queryHash());
   });
 }
 
@@ -329,20 +334,23 @@ TEST_F(ToriiQueriesTest, FindAccountWhenHasRolePermission) {
 
   auto stat = torii_utils::QuerySyncClient(ip, port).Find(
       model_query.getTransport(), response);
-  shared_model::proto::QueryResponse resp{
-      iroha::protocol::QueryResponse{response}};
   ASSERT_TRUE(stat.ok());
+
+  auto resp_result = shared_model::proto::QueryResponse::create(response);
+  IROHA_ASSERT_RESULT_VALUE(resp_result);
+  auto resp = std::move(resp_result).assumeValue();
+
   // Should not return Error Response because tx is stateless and stateful valid
   ASSERT_FALSE(response.has_error_response());
 
   ASSERT_NO_THROW({
     const auto &detail_resp =
         boost::get<const shared_model::interface::AccountResponse &>(
-            resp.get());
+            resp->get());
 
     ASSERT_EQ(detail_resp.account().accountId(), account_id);
     ASSERT_EQ(detail_resp.account().domainId(), domain_id);
-    ASSERT_EQ(model_query.hash(), resp.queryHash());
+    ASSERT_EQ(model_query.hash(), resp->queryHash());
   });
 }
 
@@ -371,7 +379,7 @@ TEST_F(ToriiQueriesTest, FindAccountAssetWhenNoGrantPermissions) {
 
   auto *r = query_response_factory
                 ->createErrorQueryResponse(
-                    ErrorQueryType::kStatefulFailed, "", 2, model_query.hash())
+                    QueryErrorType::kStatefulFailed, "", 2, model_query.hash())
                 .release();
 
   EXPECT_CALL(*query_executor, validateAndExecute_(_))
@@ -381,17 +389,18 @@ TEST_F(ToriiQueriesTest, FindAccountAssetWhenNoGrantPermissions) {
 
   auto stat = torii_utils::QuerySyncClient(ip, port).Find(
       model_query.getTransport(), response);
-  shared_model::proto::QueryResponse resp{
-      iroha::protocol::QueryResponse{response}};
   ASSERT_TRUE(stat.ok());
+
+  auto resp_result = shared_model::proto::QueryResponse::create(response);
+  IROHA_ASSERT_RESULT_VALUE(resp_result);
+  auto resp = std::move(resp_result).assumeValue();
+
   // Must be invalid due to failed stateful validation caused by no permission
   // to read account asset
-  ASSERT_TRUE(boost::apply_visitor(
-      shared_model::interface::QueryErrorResponseChecker<
-          shared_model::interface::StatefulFailedErrorResponse>(),
-      resp.get()));
+  shared_model::interface::checkForQueryError(
+      *resp, shared_model::interface::QueryErrorType::kStatefulFailed);
 
-  ASSERT_EQ(model_query.hash(), resp.queryHash());
+  ASSERT_EQ(model_query.hash(), resp->queryHash());
 }
 
 TEST_F(ToriiQueriesTest, FindAccountAssetWhenHasRolePermissions) {
@@ -431,24 +440,26 @@ TEST_F(ToriiQueriesTest, FindAccountAssetWhenHasRolePermissions) {
 
   auto stat = torii_utils::QuerySyncClient(ip, port).Find(
       model_query.getTransport(), response);
+  ASSERT_TRUE(stat.ok());
 
   auto hash = response.query_hash();
 
-  ASSERT_TRUE(stat.ok());
   // Should not return Error Response because tx is stateless and stateful valid
   ASSERT_FALSE(response.has_error_response());
 
-  shared_model::proto::QueryResponse resp{
-      iroha::protocol::QueryResponse{response}};
+  auto resp_result = shared_model::proto::QueryResponse::create(response);
+  IROHA_ASSERT_RESULT_VALUE(resp_result);
+  auto resp = std::move(resp_result).assumeValue();
+
   ASSERT_NO_THROW({
     const auto &asset_resp =
         boost::get<const shared_model::interface::AccountAssetResponse &>(
-            resp.get());
+            resp->get());
     // Check if the fields in account asset response are correct
     ASSERT_EQ(asset_resp.accountAssets()[0].assetId(), asset_id);
     ASSERT_EQ(asset_resp.accountAssets()[0].accountId(), account_id);
     ASSERT_EQ(asset_resp.accountAssets()[0].balance(), amount);
-    ASSERT_EQ(model_query.hash(), resp.queryHash());
+    ASSERT_EQ(model_query.hash(), resp->queryHash());
   });
 }
 
@@ -460,8 +471,7 @@ TEST_F(ToriiQueriesTest, FindSignatoriesWhenNoGrantPermissions) {
   iroha::pubkey_t pubkey;
   std::fill(pubkey.begin(), pubkey.end(), 0x1);
   std::vector<shared_model::interface::types::PubkeyType> keys;
-  keys.push_back(
-      shared_model::interface::types::PubkeyType(pubkey.to_string()));
+  keys.push_back(iroha::createPublicKey(pubkey.to_string()));
 
   auto creator = "a@domain";
   EXPECT_CALL(*wsv_query, getSignatories(creator))
@@ -480,7 +490,7 @@ TEST_F(ToriiQueriesTest, FindSignatoriesWhenNoGrantPermissions) {
 
   auto *r = query_response_factory
                 ->createErrorQueryResponse(
-                    ErrorQueryType::kStatefulFailed, "", 2, model_query.hash())
+                    QueryErrorType::kStatefulFailed, "", 2, model_query.hash())
                 .release();
 
   EXPECT_CALL(*query_executor, validateAndExecute_(_))
@@ -491,16 +501,17 @@ TEST_F(ToriiQueriesTest, FindSignatoriesWhenNoGrantPermissions) {
   auto stat = torii_utils::QuerySyncClient(ip, port).Find(
       model_query.getTransport(), response);
   ASSERT_TRUE(stat.ok());
+
+  auto resp_result = shared_model::proto::QueryResponse::create(response);
+  IROHA_ASSERT_RESULT_VALUE(resp_result);
+  auto resp = std::move(resp_result).assumeValue();
+
   // Must be invalid due to failed stateful validation caused by no permission
   // to read account
-  shared_model::proto::QueryResponse resp{
-      iroha::protocol::QueryResponse{response}};
-  ASSERT_TRUE(boost::apply_visitor(
-      shared_model::interface::QueryErrorResponseChecker<
-          shared_model::interface::StatefulFailedErrorResponse>(),
-      resp.get()));
+  shared_model::interface::checkForQueryError(
+      *resp, shared_model::interface::QueryErrorType::kStatefulFailed);
 
-  ASSERT_EQ(model_query.hash(), resp.queryHash());
+  ASSERT_EQ(model_query.hash(), resp->queryHash());
 }
 
 TEST_F(ToriiQueriesTest, FindSignatoriesHasRolePermissions) {
@@ -508,8 +519,9 @@ TEST_F(ToriiQueriesTest, FindSignatoriesHasRolePermissions) {
   iroha::pubkey_t pubkey;
   std::fill(pubkey.begin(), pubkey.end(), 0x1);
   std::vector<shared_model::interface::types::PubkeyType> keys;
-  keys.emplace_back(shared_model::interface::types::PubkeyType::fromHexString(
-      pubkey.to_hexstring()));
+  keys.emplace_back(shared_model::interface::types::PubkeyType{
+      std::make_unique<shared_model::crypto::BytesView>(pubkey.begin(),
+                                                        pubkey.size())});
 
   EXPECT_CALL(*wsv_query, getSignatories(creator))
       .WillRepeatedly(Return(signatories));
@@ -536,22 +548,25 @@ TEST_F(ToriiQueriesTest, FindSignatoriesHasRolePermissions) {
 
   auto stat = torii_utils::QuerySyncClient(ip, port).Find(
       model_query.getTransport(), response);
-  shared_model::proto::QueryResponse shared_response{
-      iroha::protocol::QueryResponse{response}};
+  ASSERT_TRUE(stat.ok());
+
+  auto resp_result = shared_model::proto::QueryResponse::create(response);
+  IROHA_ASSERT_RESULT_VALUE(resp_result);
+  auto resp = std::move(resp_result).assumeValue();
+
   ASSERT_NO_THROW({
     auto resp_pubkey =
         *boost::get<const shared_model::interface::SignatoriesResponse &>(
-             shared_response.get())
+             resp->get())
              .keys()
              .begin();
 
-    ASSERT_TRUE(stat.ok());
     /// Should not return Error Response because tx is stateless and stateful
     /// valid
     ASSERT_FALSE(response.has_error_response());
     // check if fields in response are valid
     ASSERT_EQ(resp_pubkey.toString(), signatories.back().toString());
-    ASSERT_EQ(model_query.hash(), shared_response.queryHash());
+    ASSERT_EQ(model_query.hash(), resp->queryHash());
   });
 }
 
@@ -606,20 +621,24 @@ TEST_F(ToriiQueriesTest, FindTransactionsWhenValid) {
   auto stat = torii_utils::QuerySyncClient(ip, port).Find(
       model_query.getTransport(), response);
   ASSERT_TRUE(stat.ok());
+
   // Should not return Error Response because tx is stateless and stateful valid
   ASSERT_FALSE(response.has_error_response());
-  shared_model::proto::QueryResponse resp{
-      iroha::protocol::QueryResponse{response}};
+
+  auto resp_result = shared_model::proto::QueryResponse::create(response);
+  IROHA_ASSERT_RESULT_VALUE(resp_result);
+  auto resp = std::move(resp_result).assumeValue();
+
   ASSERT_NO_THROW({
     const auto &tx_resp =
         boost::get<const shared_model::interface::TransactionsResponse &>(
-            resp.get());
+            resp->get());
 
     const auto &txs = tx_resp.transactions();
     for (const auto &tx : txs) {
       ASSERT_EQ(tx.creatorAccountId(), account_id);
     }
-    ASSERT_EQ(model_query.hash(), resp.queryHash());
+    ASSERT_EQ(model_query.hash(), resp->queryHash());
   });
 }
 
@@ -639,14 +658,15 @@ TEST_F(ToriiQueriesTest, FindManyTimesWhereQueryServiceSync) {
 
     auto stat = client.Find(model_query.getTransport(), response);
     ASSERT_TRUE(stat.ok());
-    shared_model::proto::QueryResponse resp{
-        iroha::protocol::QueryResponse{response}};
-    // Must return Error Response
-    ASSERT_TRUE(boost::apply_visitor(
-        shared_model::interface::QueryErrorResponseChecker<
-            shared_model::interface::StatelessFailedErrorResponse>(),
-        resp.get()));
 
-    ASSERT_EQ(model_query.hash(), resp.queryHash());
+    auto resp_result = shared_model::proto::QueryResponse::create(response);
+    IROHA_ASSERT_RESULT_VALUE(resp_result);
+    auto resp = std::move(resp_result).assumeValue();
+
+    // Must return Error Response
+    shared_model::interface::checkForQueryError(
+        *resp, shared_model::interface::QueryErrorType::kStatelessFailed);
+
+    ASSERT_EQ(model_query.hash(), resp->queryHash());
   }
 }

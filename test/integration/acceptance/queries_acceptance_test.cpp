@@ -7,15 +7,18 @@
 #include <boost/variant.hpp>
 #include "backend/protobuf/query_responses/proto_query_response.hpp"
 #include "backend/protobuf/transaction.hpp"
+#include "common/result.hpp"
 #include "framework/integration_framework/integration_test_framework.hpp"
+#include "framework/result_gtest_checkers.hpp"
 #include "integration/acceptance/acceptance_fixture.hpp"
 #include "interfaces/permissions.hpp"
 #include "interfaces/query_responses/roles_response.hpp"
-#include "utils/query_error_response_visitor.hpp"
+#include "utils/query_error_response_checker.hpp"
 
 using namespace integration_framework;
 using namespace shared_model;
 using namespace common_constants;
+using namespace shared_model::crypto;
 
 class QueriesAcceptanceTest : public AcceptanceFixture {
  public:
@@ -74,7 +77,9 @@ TEST_F(QueriesAcceptanceTest, NonExistentCreatorId) {
   auto query = complete(baseQry(NonExistentUserId).getRoles());
 
   itf.sendQuery(
-      query, checkQueryErrorResponse<interface::StatefulFailedErrorResponse>());
+      query,
+      checkQueryErrorResponse(
+          shared_model::interface::QueryErrorType::kStatefulFailed, 3));
 }
 
 /**
@@ -109,7 +114,8 @@ TEST_F(QueriesAcceptanceTest, More24HourOldTime) {
 
   itf.sendQuery(
       query,
-      checkQueryErrorResponse<interface::StatelessFailedErrorResponse>());
+      checkQueryErrorResponse(
+          shared_model::interface::QueryErrorType::kStatelessFailed, 0));
 }
 
 /**
@@ -178,7 +184,8 @@ TEST_F(QueriesAcceptanceTest, MoreFiveMinutesFromFuture) {
 
   itf.sendQuery(
       query,
-      checkQueryErrorResponse<interface::StatelessFailedErrorResponse>());
+      checkQueryErrorResponse(
+          shared_model::interface::QueryErrorType::kStatelessFailed, 0));
 }
 
 /**
@@ -196,7 +203,8 @@ TEST_F(QueriesAcceptanceTest, TenMinutesFromFuture) {
 
   itf.sendQuery(
       query,
-      checkQueryErrorResponse<interface::StatelessFailedErrorResponse>());
+      checkQueryErrorResponse(
+          shared_model::interface::QueryErrorType::kStatelessFailed, 0));
 }
 
 /**
@@ -209,15 +217,16 @@ TEST_F(QueriesAcceptanceTest, TenMinutesFromFuture) {
  * @then the query should not pass stateless validation
  */
 TEST_F(QueriesAcceptanceTest, InvalidSignValidPubKeypair) {
-  crypto::Keypair kInvalidSignValidPubKeypair = crypto::Keypair(
+  Keypair kInvalidSignValidPubKeypair(
       kUserKeypair.publicKey(),
-      crypto::PrivateKey(crypto::Blob::fromHexString(invalidPrivateKey)));
+      PrivateKey{Blob::fromHexString(invalidPrivateKey).assumeValue()});
 
   auto query = complete(baseQry().getRoles(), kInvalidSignValidPubKeypair);
 
   itf.sendQuery(
       query,
-      checkQueryErrorResponse<interface::StatelessFailedErrorResponse>());
+      checkQueryErrorResponse(
+          shared_model::interface::QueryErrorType::kStatelessFailed, 0));
 }
 
 /**
@@ -229,15 +238,16 @@ TEST_F(QueriesAcceptanceTest, InvalidSignValidPubKeypair) {
  * @then the query should not pass stateless validation
  */
 TEST_F(QueriesAcceptanceTest, ValidSignInvalidPubKeypair) {
-  crypto::Keypair kValidSignInvalidPubKeypair = crypto::Keypair(
-      crypto::PublicKey(crypto::Blob::fromHexString(invalidPublicKey)),
+  Keypair kValidSignInvalidPubKeypair(
+      PublicKey{Blob::fromHexString(invalidPublicKey).assumeValue()},
       kUserKeypair.privateKey());
 
   auto query = complete(baseQry().getRoles(), kValidSignInvalidPubKeypair);
 
   itf.sendQuery(
       query,
-      checkQueryErrorResponse<interface::StatelessFailedErrorResponse>());
+      checkQueryErrorResponse(
+          shared_model::interface::QueryErrorType::kStatelessFailed, 0));
 }
 
 /**
@@ -249,15 +259,16 @@ TEST_F(QueriesAcceptanceTest, ValidSignInvalidPubKeypair) {
  * @then the query should not pass stateless validation
  */
 TEST_F(QueriesAcceptanceTest, FullyInvalidKeypair) {
-  crypto::Keypair kFullyInvalidKeypair = crypto::Keypair(
-      crypto::PublicKey(crypto::Blob::fromHexString(invalidPublicKey)),
-      crypto::PrivateKey(crypto::Blob::fromHexString(invalidPrivateKey)));
+  Keypair kFullyInvalidKeypair{
+      PublicKey{Blob::fromHexString(invalidPublicKey).assumeValue()},
+      PrivateKey{Blob::fromHexString(invalidPrivateKey).assumeValue()}};
 
   auto query = complete(baseQry().getRoles(), kFullyInvalidKeypair);
 
   itf.sendQuery(
       query,
-      checkQueryErrorResponse<interface::StatelessFailedErrorResponse>());
+      checkQueryErrorResponse(
+          shared_model::interface::QueryErrorType::kStatelessFailed, 0));
 }
 
 /**
@@ -270,13 +281,16 @@ TEST_F(QueriesAcceptanceTest, FullyInvalidKeypair) {
  */
 TEST_F(QueriesAcceptanceTest, EmptySignValidPubKeypair) {
   auto proto_query = complete(baseQry().getRoles()).getTransport();
-
   proto_query.clear_signature();
-  auto query = proto::Query(proto_query);
+
+  auto model_result = proto::Query::create(proto_query);
+  IROHA_ASSERT_RESULT_VALUE(model_result) << "Could not create query.";
+  auto query = std::move(model_result).assumeValue();
 
   itf.sendQuery(
-      query,
-      checkQueryErrorResponse<interface::StatelessFailedErrorResponse>());
+      *query,
+      checkQueryErrorResponse(
+          shared_model::interface::QueryErrorType::kStatelessFailed, 0));
 }
 
 /**
@@ -288,13 +302,16 @@ TEST_F(QueriesAcceptanceTest, EmptySignValidPubKeypair) {
  */
 TEST_F(QueriesAcceptanceTest, ValidSignEmptyPubKeypair) {
   auto proto_query = complete(baseQry().getRoles()).getTransport();
-
   proto_query.mutable_signature()->clear_public_key();
-  auto query = proto::Query(proto_query);
+
+  auto model_result = proto::Query::create(proto_query);
+  IROHA_ASSERT_RESULT_VALUE(model_result) << "Could not create query.";
+  auto query = std::move(model_result).assumeValue();
 
   itf.sendQuery(
-      query,
-      checkQueryErrorResponse<interface::StatelessFailedErrorResponse>());
+      *query,
+      checkQueryErrorResponse(
+          shared_model::interface::QueryErrorType::kStatelessFailed, 0));
 }
 
 /**
@@ -309,11 +326,15 @@ TEST_F(QueriesAcceptanceTest, FullyEmptyPubKeypair) {
 
   proto_query.clear_signature();
   proto_query.mutable_signature()->clear_public_key();
-  auto query = proto::Query(proto_query);
+
+  auto model_result = proto::Query::create(proto_query);
+  IROHA_ASSERT_RESULT_VALUE(model_result) << "Could not create query.";
+  auto query = std::move(model_result).assumeValue();
 
   itf.sendQuery(
-      query,
-      checkQueryErrorResponse<interface::StatelessFailedErrorResponse>());
+      *query,
+      checkQueryErrorResponse(
+          shared_model::interface::QueryErrorType::kStatelessFailed, 0));
 }
 
 /**
@@ -325,19 +346,22 @@ TEST_F(QueriesAcceptanceTest, FullyEmptyPubKeypair) {
  * @then the query should not pass stateless validation
  */
 TEST_F(QueriesAcceptanceTest, InvalidSignEmptyPubKeypair) {
-  crypto::Keypair kInvalidSignEmptyPubKeypair = crypto::Keypair(
+  Keypair kInvalidSignEmptyPubKeypair(
       kUserKeypair.publicKey(),
-      crypto::PrivateKey(crypto::Blob::fromHexString(invalidPrivateKey)));
+      PrivateKey{Blob::fromHexString(invalidPrivateKey).assumeValue()});
 
   auto proto_query = complete(baseQry().getRoles(), kInvalidSignEmptyPubKeypair)
                          .getTransport();
-
   proto_query.mutable_signature()->clear_public_key();
-  auto query = proto::Query(proto_query);
+
+  auto model_result = proto::Query::create(proto_query);
+  IROHA_ASSERT_RESULT_VALUE(model_result) << "Could not create query.";
+  auto query = std::move(model_result).assumeValue();
 
   itf.sendQuery(
-      query,
-      checkQueryErrorResponse<interface::StatelessFailedErrorResponse>());
+      *query,
+      checkQueryErrorResponse(
+          shared_model::interface::QueryErrorType::kStatelessFailed, 0));
 }
 
 /**
@@ -353,17 +377,20 @@ TEST_F(QueriesAcceptanceTest, InvalidSignEmptyPubKeypair) {
  * @then the query should not pass stateless validation
  */
 TEST_F(QueriesAcceptanceTest, EmptySignInvalidPubKeypair) {
-  crypto::Keypair kEmptySignInvalidPubKeypair = crypto::Keypair(
-      crypto::PublicKey(crypto::Blob::fromHexString(invalidPublicKey)),
+  Keypair kEmptySignInvalidPubKeypair(
+      PublicKey{Blob::fromHexString(invalidPublicKey).assumeValue()},
       kUserKeypair.privateKey());
 
   auto proto_query = complete(baseQry().getRoles(), kEmptySignInvalidPubKeypair)
                          .getTransport();
-
   proto_query.clear_signature();
-  auto query = proto::Query(proto_query);
+
+  auto model_result = proto::Query::create(proto_query);
+  IROHA_ASSERT_RESULT_VALUE(model_result) << "Could not create query.";
+  auto query = std::move(model_result).assumeValue();
 
   itf.sendQuery(
-      query,
-      checkQueryErrorResponse<interface::StatelessFailedErrorResponse>());
+      *query,
+      checkQueryErrorResponse(
+          shared_model::interface::QueryErrorType::kStatelessFailed, 0));
 }

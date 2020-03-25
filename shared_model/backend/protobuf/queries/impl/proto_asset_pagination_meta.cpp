@@ -7,6 +7,8 @@
 
 #include <optional>
 
+#include "queries.pb.h"
+
 namespace types = shared_model::interface::types;
 
 using namespace shared_model::proto;

@@ -13,7 +13,7 @@
 
 #include <boost/optional.hpp>
 #include <boost/variant.hpp>
-
+#include "common/forward_like.hpp"
 #include "common/visitor.hpp"
 
 /*
@@ -45,9 +45,15 @@ namespace iroha {
           typename = std::enable_if_t<std::is_constructible<T, Args...>::value>>
       Value(Args &&... args) : value(std::forward<Args>(args)...) {}
       T value;
+
       template <typename V>
-      operator Value<V>() {
-        return {value};
+      operator Value<V>() & {
+        return value;
+      }
+
+      template <typename V>
+      operator Value<V>() && {
+        return std::forward<T>(value);
       }
     };
 
@@ -64,9 +70,14 @@ namespace iroha {
           typename = std::enable_if_t<std::is_constructible<E, Args...>::value>>
       Error(Args &&... args) : error(std::forward<Args>(args)...) {}
       E error;
+
       template <typename V>
-      operator Error<V>() {
-        return {error};
+      operator Error<V>() & {
+        return error;
+      }
+      template <typename V>
+      operator Error<V>() && {
+        return std::forward<E>(error);
       }
     };
 
@@ -117,6 +128,18 @@ namespace iroha {
                                   [](Error<OE> &&e) -> Result<V, E> {
                                     return ErrorType{std::move(e.error)};
                                   })) {}
+
+      const variant_type &variant() const & {
+        return *this;
+      };
+
+      variant_type &variant() & {
+        return *this;
+      };
+
+      variant_type &&variant() && {
+        return std::move(*this);
+      };
 
       /**
        * match is a function which allows working with result's underlying
@@ -418,7 +441,7 @@ namespace iroha {
           [&f](auto &&v) {
             return TypeHelper::makeValue(f(std::move(v.value)));
           },
-          [](auto &&e) { return ReturnType(makeError(std::move(e.error))); });
+          [](auto &&e) { return ReturnType(std::move(e)); });
     }
 
     /**
@@ -526,6 +549,24 @@ namespace iroha {
         return makeError(std::move(error).value());
       }
       return makeValue(std::move(value));
+    }
+
+    template <
+        typename OutputCollection,
+        typename InputCollection,
+        typename Element = decltype(*std::declval<InputCollection>().begin())>
+    Result<OutputCollection, typename Element::ErrorInnerType>
+    resultsToResultOfValues(InputCollection &&input) {
+      OutputCollection output;
+      auto inserter = std::inserter(output, output.end());
+      for (auto &&el : input) {
+        if (auto e = resultToOptionalError(el)) {
+          return makeError(std::move(e).value());
+        }
+        *inserter++ =
+            stack_overflow::forward_like<InputCollection>(el).assumeValue();
+      }
+      return makeValue(std::move(output));
     }
   }  // namespace expected
 }  // namespace iroha

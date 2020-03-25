@@ -8,6 +8,7 @@
 #include <gtest/gtest.h>
 #include "backend/protobuf/common_objects/proto_common_objects_factory.hpp"
 #include "backend/protobuf/proto_transport_factory.hpp"
+#include "framework/crypto_dummies.hpp"
 #include "framework/mock_stream.h"
 #include "framework/test_logger.hpp"
 #include "interfaces/iroha_internal/transaction_batch_factory_impl.hpp"
@@ -85,10 +86,7 @@ class TransportTest : public ::testing::Test {
                                            sender_factory_);
     transport->subscribe(mst_notification_transport_);
 
-    shared_model::interface::types::PubkeyType pk(
-        shared_model::crypto::Hash::fromHexString(
-            "abcdabcdabcdabcdabcdabcdabcdabcd"));
-    peer = makePeer("localhost:0", pk);
+    peer = makePeer("localhost:0", iroha::createPublicKey("localhost pubkey"));
   }
 
   std::shared_ptr<AsyncGrpcClient<google::protobuf::Empty>> async_call_;
@@ -221,8 +219,8 @@ TEST_F(TransportTest, ReplayAttack) {
           iroha::ametsuchi::tx_cache_status_responses::Rejected{second_hash}};
 
   transport::MstState proto_state;
-  proto_state.set_source_peer_key(
-      shared_model::crypto::toBinaryString(my_key_.publicKey()));
+  proto_state.set_source_peer_key(my_key_.publicKey().blob().data(),
+                                  my_key_.publicKey().blob().size());
 
   state.iterateTransactions([&proto_state](const auto &tx) {
     *proto_state.add_transactions() =

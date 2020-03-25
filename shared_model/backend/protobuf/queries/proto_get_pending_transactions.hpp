@@ -9,22 +9,44 @@
 #include "interfaces/queries/get_pending_transactions.hpp"
 
 #include <optional>
-#include "backend/protobuf/queries/proto_tx_pagination_meta.hpp"
-#include "queries.pb.h"
+
+#include "common/result_fwd.hpp"
+
+namespace iroha {
+  namespace protocol {
+    class GetPendingTransactions;
+    class Query;
+  }  // namespace protocol
+}  // namespace iroha
 
 namespace shared_model {
+  namespace interface {
+    class TxPaginationMeta;
+  }
+
   namespace proto {
     class GetPendingTransactions final
         : public interface::GetPendingTransactions {
      public:
-      explicit GetPendingTransactions(iroha::protocol::Query &query);
+      static iroha::expected::Result<std::unique_ptr<GetPendingTransactions>,
+                                     std::string>
+      create(const iroha::protocol::Query &query);
+
+      GetPendingTransactions(
+          const iroha::protocol::Query &query,
+          std::optional<
+              std::unique_ptr<shared_model::interface::TxPaginationMeta>>
+              pagination_meta);
+
+      ~GetPendingTransactions() override;
 
       std::optional<std::reference_wrapper<const interface::TxPaginationMeta>>
       paginationMeta() const override;
 
      private:
       const iroha::protocol::GetPendingTransactions &pending_transactions_;
-      std::optional<const TxPaginationMeta> pagination_meta_;
+      std::optional<std::unique_ptr<shared_model::interface::TxPaginationMeta>>
+          pagination_meta_;
     };
   }  // namespace proto
 }  // namespace shared_model

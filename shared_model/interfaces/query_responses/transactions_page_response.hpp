@@ -9,6 +9,7 @@
 #include "interfaces/base/model_primitive.hpp"
 
 #include <optional>
+
 #include "interfaces/common_objects/range_types.hpp"
 #include "interfaces/common_objects/types.hpp"
 
@@ -28,7 +29,8 @@ namespace shared_model {
       /**
        * @return hash of the first transaction from the next page
        */
-      virtual std::optional<interface::types::HashType> nextTxHash() const = 0;
+      virtual const std::optional<interface::types::HashType> &nextTxHash()
+          const = 0;
 
       /**
        * @return total number of transactions for the query

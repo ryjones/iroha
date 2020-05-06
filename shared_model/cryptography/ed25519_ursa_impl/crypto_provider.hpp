@@ -6,11 +6,16 @@
 #ifndef IROHA_URSA_CRYPTOPROVIDER_HPP
 #define IROHA_URSA_CRYPTOPROVIDER_HPP
 
+#if !defined(USE_LIBURSA)
+#error USE_LIBURSA must be defined
+#endif
+
 #include "cryptography/keypair.hpp"
 #include "cryptography/private_key.hpp"
 #include "cryptography/public_key.hpp"
 #include "cryptography/seed.hpp"
 #include "cryptography/signed.hpp"
+#include "interfaces/common_objects/byte_range.hpp"
 
 namespace shared_model {
   namespace crypto {
@@ -23,9 +28,9 @@ namespace shared_model {
        * Signs the message.
        * @param blob - blob to sign
        * @param keypair - keypair
-       * @return Signed object with signed data
+       * @return hex signature data string
        */
-      static Signed sign(const Blob &blob, const Keypair &keypair);
+      static std::string sign(const Blob &blob, const Keypair &keypair);
 
       /**
        * Verifies signature.
@@ -34,9 +39,10 @@ namespace shared_model {
        * @param publicKey - public key
        * @return true if verify was OK or false otherwise
        */
-      static bool verify(const Signed &signed_data,
-                         const Blob &orig,
-                         const PublicKey &public_key);
+      static bool verify(
+          const shared_model::interface::types::ByteRange &signed_data,
+          const shared_model::interface::types::ByteRange &source,
+          const shared_model::interface::types::ByteRange &public_key);
 
       /**
        * Generates new keypair with a default seed
@@ -57,6 +63,8 @@ namespace shared_model {
       static constexpr size_t kPublicKeyLength = 256 / 8;
       static constexpr size_t kPrivateKeyLength = 512 / 8;
       static constexpr size_t kSignatureLength = 512 / 8;
+
+      static const char *kName;
     };
   }  // namespace crypto
 }  // namespace shared_model

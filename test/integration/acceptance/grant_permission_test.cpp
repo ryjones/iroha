@@ -23,14 +23,14 @@ using namespace common_constants;
  */
 TEST_F(GrantablePermissionsFixture, GrantToInexistingAccount) {
   IntegrationTestFramework(1)
-      .setInitialState(kAdminKeypair)
+      .setInitialState(kAdminSigner)
       .sendTx(makeAccountWithPerms(
-          kAccount1, kAccount1Keypair, kCanGrantAll, kRole1))
+          kAccount1, kAccount1Signer->publicKey(), kCanGrantAll, kRole1))
       .skipProposal()
       .skipVerifiedProposal()
       .skipBlock()
       .sendTx(grantPermission(kAccount1,
-                              kAccount1Keypair,
+                              *kAccount1Signer,
                               kAccount2,
                               permissions::Grantable::kAddMySignatory))
       .skipProposal()
@@ -54,26 +54,23 @@ TEST_F(GrantablePermissionsFixture, GrantToInexistingAccount) {
  * AND there is a signatory added by the permittee
  */
 TEST_F(GrantablePermissionsFixture, GrantAddSignatoryPermission) {
-  auto expected_number_of_signatories = 2;
-  auto is_contained = true;
-  auto check_if_signatory_is_contained = checkSignatorySet(
-      kAccount2Keypair, expected_number_of_signatories, is_contained);
-
   IntegrationTestFramework itf(1);
-  itf.setInitialState(kAdminKeypair);
+  itf.setInitialState(kAdminSigner);
   auto &x = createTwoAccounts(
       itf, {Role::kAddMySignatory, Role::kGetMySignatories}, {Role::kReceive});
   x.sendTxAwait(grantPermission(kAccount1,
-                                kAccount1Keypair,
+                                *kAccount1Signer,
                                 kAccount2,
                                 permissions::Grantable::kAddMySignatory),
                 [](auto &block) { ASSERT_EQ(block->transactions().size(), 1); })
       // Add signatory
       .sendTxAwait(
-          permitteeAddSignatory(kAccount2, kAccount2Keypair, kAccount1),
+          permitteeAddSignatory(kAccount2, *kAccount2Signer, kAccount1),
           [](auto &block) { ASSERT_EQ(block->transactions().size(), 1); })
-      .sendQuery(querySignatories(kAccount1, kAccount1Keypair),
-                 check_if_signatory_is_contained);
+      .sendQuery(
+          querySignatories(kAccount1, *kAccount1Signer),
+          makeSignatoryResponceChecker(::testing::UnorderedElementsAre(
+              kAccount1Signer->publicKey(), kAccount2Signer->publicKey())));
 }
 
 /**
@@ -91,20 +88,15 @@ TEST_F(GrantablePermissionsFixture, GrantAddSignatoryPermission) {
  * written AND there is no signatory added by the permittee
  */
 TEST_F(GrantablePermissionsFixture, GrantRemoveSignatoryPermission) {
-  auto expected_number_of_signatories = 1;
-  auto is_contained = false;
-  auto check_if_signatory_is_not_contained = checkSignatorySet(
-      kAccount2Keypair, expected_number_of_signatories, is_contained);
-
   IntegrationTestFramework itf(1);
-  itf.setInitialState(kAdminKeypair);
+  itf.setInitialState(kAdminSigner);
   createTwoAccounts(itf,
                     {Role::kAddMySignatory,
                      Role::kRemoveMySignatory,
                      Role::kGetMySignatories},
                     {Role::kReceive})
       .sendTx(grantPermission(kAccount1,
-                              kAccount1Keypair,
+                              *kAccount1Signer,
                               kAccount2,
                               permissions::Grantable::kAddMySignatory))
       .skipProposal()
@@ -112,18 +104,19 @@ TEST_F(GrantablePermissionsFixture, GrantRemoveSignatoryPermission) {
       .skipBlock()
       .sendTxAwait(
           grantPermission(kAccount1,
-                          kAccount1Keypair,
+                          *kAccount1Signer,
                           kAccount2,
                           permissions::Grantable::kRemoveMySignatory),
           [](auto &block) { ASSERT_EQ(block->transactions().size(), 1); })
       .sendTxAwait(
-          permitteeAddSignatory(kAccount2, kAccount2Keypair, kAccount1),
+          permitteeAddSignatory(kAccount2, *kAccount2Signer, kAccount1),
           [](auto &block) { ASSERT_EQ(block->transactions().size(), 1); })
       .sendTxAwait(
-          permitteeRemoveSignatory(kAccount2, kAccount2Keypair, kAccount1),
+          permitteeRemoveSignatory(kAccount2, *kAccount2Signer, kAccount1),
           [](auto &block) { ASSERT_EQ(block->transactions().size(), 1); })
-      .sendQuery(querySignatories(kAccount1, kAccount1Keypair),
-                 check_if_signatory_is_not_contained);
+      .sendQuery(querySignatories(kAccount1, *kAccount1Signer),
+                 makeSignatoryResponceChecker(::testing::UnorderedElementsAre(
+                     kAccount1Signer->publicKey())));
 }
 
 /**
@@ -145,33 +138,33 @@ TEST_F(GrantablePermissionsFixture, GrantSetQuorumPermission) {
   auto check_quorum_quantity = checkQuorum(quorum_quantity);
 
   IntegrationTestFramework itf(1);
-  itf.setInitialState(kAdminKeypair);
+  itf.setInitialState(kAdminSigner);
   createTwoAccounts(
       itf,
       {Role::kSetMyQuorum, Role::kAddMySignatory, Role::kGetMyAccount},
       {Role::kReceive})
       .sendTx(grantPermission(kAccount1,
-                              kAccount1Keypair,
+                              *kAccount1Signer,
                               kAccount2,
                               permissions::Grantable::kSetMyQuorum))
       .skipProposal()
       .skipVerifiedProposal()
       .skipBlock()
       .sendTx(grantPermission(kAccount1,
-                              kAccount1Keypair,
+                              *kAccount1Signer,
                               kAccount2,
                               permissions::Grantable::kAddMySignatory))
       .skipProposal()
       .skipVerifiedProposal()
       .skipBlock()
-      .sendTx(permitteeAddSignatory(kAccount2, kAccount2Keypair, kAccount1))
+      .sendTx(permitteeAddSignatory(kAccount2, *kAccount2Signer, kAccount1))
       .skipProposal()
       .skipVerifiedProposal()
       .skipBlock()
       .sendTxAwait(
-          setQuorum(kAccount2, kAccount2Keypair, kAccount1, 2),
+          setQuorum(kAccount2, *kAccount2Signer, kAccount1, 2),
           [](auto &block) { ASSERT_EQ(block->transactions().size(), 1); })
-      .sendQuery(queryAccount(kAccount1, kAccount1Keypair),
+      .sendQuery(queryAccount(kAccount1, *kAccount1Signer),
                  check_quorum_quantity);
 }
 
@@ -193,23 +186,23 @@ TEST_F(GrantablePermissionsFixture, GrantSetAccountDetailPermission) {
       checkAccountDetail(kAccountDetailKey, kAccountDetailValue);
 
   IntegrationTestFramework itf(1);
-  itf.setInitialState(kAdminKeypair);
+  itf.setInitialState(kAdminSigner);
   createTwoAccounts(
       itf, {Role::kSetMyAccountDetail, Role::kGetMyAccDetail}, {Role::kReceive})
       .sendTxAwait(
           grantPermission(kAccount1,
-                          kAccount1Keypair,
+                          *kAccount1Signer,
                           kAccount2,
                           permissions::Grantable::kSetMyAccountDetail),
           [](auto &block) { ASSERT_EQ(block->transactions().size(), 1); })
       .sendTxAwait(
           setAccountDetail(kAccount2,
-                           kAccount2Keypair,
+                           *kAccount2Signer,
                            kAccount1,
                            kAccountDetailKey,
                            kAccountDetailValue),
           [](auto &block) { ASSERT_EQ(block->transactions().size(), 1); })
-      .sendQuery(queryAccountDetail(kAccount1, kAccount1Keypair),
+      .sendQuery(queryAccountDetail(kAccount1, *kAccount1Signer),
                  check_account_detail);
 }
 
@@ -232,12 +225,12 @@ TEST_F(GrantablePermissionsFixture, GrantTransferPermission) {
   auto amount_of_asset = "1000.0";
 
   IntegrationTestFramework itf(1);
-  itf.setInitialState(kAdminKeypair);
+  itf.setInitialState(kAdminSigner);
   createTwoAccounts(itf,
                     {Role::kTransferMyAssets, Role::kReceive},
                     {Role::kTransfer, Role::kReceive})
       .sendTx(grantPermission(kAccount1,
-                              kAccount1Keypair,
+                              *kAccount1Signer,
                               kAccount2,
                               permissions::Grantable::kTransferMyAssets))
       .skipProposal()
@@ -245,11 +238,11 @@ TEST_F(GrantablePermissionsFixture, GrantTransferPermission) {
           [](auto &block) { ASSERT_EQ(block->transactions().size(), 1); })
       .sendTxAwait(
           addAssetAndTransfer(
-              kAdminName, kAdminKeypair, amount_of_asset, kAccount1),
+              kAdminName, *kAdminSigner, amount_of_asset, kAccount1),
           [](auto &block) { ASSERT_EQ(block->transactions().size(), 1); })
       .sendTxAwait(
           transferAssetFromSource(kAccount2,
-                                  kAccount2Keypair,
+                                  *kAccount2Signer,
                                   kAccount1,
                                   amount_of_asset,
                                   kAccount2),
@@ -270,9 +263,9 @@ TEST_F(GrantablePermissionsFixture, GrantTransferPermission) {
 TEST_F(GrantablePermissionsFixture, GrantWithoutGrantPermissions) {
   for (auto &perm : kAllGrantable) {
     IntegrationTestFramework itf(1);
-    itf.setInitialState(kAdminKeypair);
+    itf.setInitialState(kAdminSigner);
     createTwoAccounts(itf, {Role::kReceive}, {Role::kReceive})
-        .sendTx(grantPermission(kAccount1, kAccount1Keypair, kAccount2, perm))
+        .sendTx(grantPermission(kAccount1, *kAccount1Signer, kAccount2, perm))
         .skipProposal()
         .checkVerifiedProposal([](auto &proposal) {
           ASSERT_EQ(proposal->transactions().size(), 0);
@@ -295,17 +288,17 @@ TEST_F(GrantablePermissionsFixture, GrantWithoutGrantPermissions) {
 
 TEST_F(GrantablePermissionsFixture, GrantMoreThanOnce) {
   IntegrationTestFramework itf(1);
-  itf.setInitialState(kAdminKeypair);
+  itf.setInitialState(kAdminSigner);
   createTwoAccounts(itf, {kCanGrantAll}, {Role::kReceive})
       .sendTx(grantPermission(kAccount1,
-                              kAccount1Keypair,
+                              *kAccount1Signer,
                               kAccount2,
                               permissions::Grantable::kAddMySignatory))
       .skipProposal()
       .skipVerifiedProposal()
       .skipBlock()
       .sendTx(grantPermission(kAccount1,
-                              kAccount1Keypair,
+                              *kAccount1Signer,
                               kAccount2,
                               permissions::Grantable::kAddMySignatory))
       .skipProposal()

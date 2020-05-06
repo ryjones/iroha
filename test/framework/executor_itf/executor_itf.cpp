@@ -7,6 +7,7 @@
 
 #include "ametsuchi/specific_query_executor.hpp"
 #include "ametsuchi/tx_executor.hpp"
+#include "cryptography/crypto_provider/crypto_signer.hpp"
 #include "framework/config_helper.hpp"
 #include "framework/test_logger.hpp"
 #include "interfaces/permissions.hpp"
@@ -103,7 +104,7 @@ CommandResult ExecutorItf::createRoleWithPerms(
 CommandResult ExecutorItf::createUserWithPerms(
     const std::string &account_name,
     const std::string &domain,
-    const shared_model::crypto::PublicKey &pubkey,
+    shared_model::interface::types::PublicKeyHexStringView pubkey,
     const shared_model::interface::RolePermissionSet &role_perms) const {
   return createUserWithPermsInternal(account_name, domain, pubkey, role_perms) |
       [&, this] { return this->grantAllToAdmin(account_name + "@" + domain); };
@@ -145,7 +146,7 @@ CommandResult ExecutorItf::grantAllToAdmin(
 CommandResult ExecutorItf::createUserWithPermsInternal(
     const std::string &account_name,
     const std::string &domain,
-    const shared_model::crypto::PublicKey &pubkey,
+    shared_model::interface::types::PublicKeyHexStringView pubkey,
     const shared_model::interface::RolePermissionSet &role_perms) const {
   createDomain(domain);
 
@@ -176,5 +177,5 @@ CommandResult ExecutorItf::createAdmin() const {
   shared_model::interface::RolePermissionSet all_role_perms;
   all_role_perms.setAll();
   return createUserWithPermsInternal(
-      kAdminName, kDomain, kAdminKeypair.publicKey(), all_role_perms);
+      kAdminName, kDomain, kAdminSigner->publicKey(), all_role_perms);
 }

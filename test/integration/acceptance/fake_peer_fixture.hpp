@@ -6,11 +6,14 @@
 #ifndef IROHA_FAKE_PEER_FIXTURE_HPP
 #define IROHA_FAKE_PEER_FIXTURE_HPP
 
+#include <string_view>
+
 #include "integration/acceptance/acceptance_fixture.hpp"
 
 #include "backend/protobuf/block.hpp"
 #include "framework/integration_framework/fake_peer/fake_peer.hpp"
 #include "framework/integration_framework/integration_test_framework.hpp"
+#include "interfaces/common_objects/string_view_types.hpp"
 
 template <size_t N>
 void checkBlockHasNTxs(
@@ -18,24 +21,22 @@ void checkBlockHasNTxs(
   ASSERT_EQ(block->transactions().size(), N);
 }
 
-auto makePeerPointeeMatcher(shared_model::interface::types::AddressType address,
-                            std::string pubkey) {
+auto makePeerPointeeMatcher(
+    shared_model::interface::types::AddressType address,
+    shared_model::interface::types::PublicKeyHexStringView pubkey) {
   return ::testing::Truly(
-      [address = std::move(address), pubkey = std::move(pubkey)](
+      [address = std::move(address), pubkey = std::string{pubkey}](
           std::shared_ptr<shared_model::interface::Peer> peer) {
         return peer->address() == address and peer->pubkey() == pubkey;
       });
 }
 
-auto makePeerPointeeMatcher(shared_model::interface::types::AddressType address,
-                            shared_model::interface::types::PubkeyType pubkey) {
-  return makePeerPointeeMatcher(address, pubkey.hex());
-}
-
 auto makePeerPointeeMatcher(
     std::shared_ptr<shared_model::interface::Peer> peer) {
   // TODO [IR-658] artyom-yurin 30.09.2019: Rewrite using operator ==
-  return makePeerPointeeMatcher(peer->address(), peer->pubkey());
+  return makePeerPointeeMatcher(
+      peer->address(),
+      shared_model::interface::types::PublicKeyHexStringView{peer->pubkey()});
 }
 
 class FakePeerFixture : public AcceptanceFixture {
@@ -72,7 +73,7 @@ class FakePeerFixture : public AcceptanceFixture {
         .sendTxAwait(complete(baseTx(common_constants::kAdminId)
                                   .addAssetQuantity(common_constants::kAssetId,
                                                     "20000.0"),
-                              common_constants::kAdminKeypair),
+                              *common_constants::kAdminSigner),
                      checkBlockHasNTxs<1>);
   }
 
@@ -80,7 +81,7 @@ class FakePeerFixture : public AcceptanceFixture {
   void SetUp() override {
     itf_ = std::make_unique<integration_framework::IntegrationTestFramework>(
         1, boost::none, true, true);
-    itf_->initPipeline(common_constants::kAdminKeypair);
+    itf_->initPipeline(common_constants::kAdminSigner);
   }
 
   std::vector<std::shared_ptr<FakePeer>> fake_peers_;

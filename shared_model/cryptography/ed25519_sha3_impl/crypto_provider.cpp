@@ -8,18 +8,21 @@
 #include "cryptography/ed25519_sha3_impl/signer.hpp"
 #include "cryptography/ed25519_sha3_impl/verifier.hpp"
 
+using namespace shared_model::interface::types;
+
 namespace shared_model {
   namespace crypto {
 
-    Signed CryptoProviderEd25519Sha3::sign(const Blob &blob,
-                                           const Keypair &keypair) {
+    std::string CryptoProviderEd25519Sha3::sign(const Blob &blob,
+                                                const Keypair &keypair) {
       return Signer::sign(blob, keypair);
     }
 
-    bool CryptoProviderEd25519Sha3::verify(const Signed &signedData,
-                                           const Blob &orig,
-                                           const PublicKey &publicKey) {
-      return Verifier::verify(signedData, orig, publicKey);
+    bool CryptoProviderEd25519Sha3::verify(
+        const SignatureByteRangeView &signature,
+        const Blob &orig,
+        const PublicKeyByteRangeView &public_key) {
+      return Verifier::verify(signature, orig, public_key);
     }
 
     Seed CryptoProviderEd25519Sha3::generateSeed() {
@@ -39,8 +42,16 @@ namespace shared_model {
       assert(seed.size() == kSeedLength);
       auto keypair = iroha::create_keypair(
           iroha::blob_t<kSeedLength>::from_raw(seed.blob().data()));
-      return Keypair(PublicKey(keypair.pubkey.to_string()),
+      return Keypair(PublicKeyHexStringView{keypair.pubkey.to_hexstring()},
                      PrivateKey(keypair.privkey.to_string()));
     }
+
+    constexpr size_t CryptoProviderEd25519Sha3::kHashLength;
+    constexpr size_t CryptoProviderEd25519Sha3::kPublicKeyLength;
+    constexpr size_t CryptoProviderEd25519Sha3::kPrivateKeyLength;
+    constexpr size_t CryptoProviderEd25519Sha3::kSignatureLength;
+    constexpr size_t CryptoProviderEd25519Sha3::kSeedLength;
+
+    const char *CryptoProviderEd25519Sha3::kName = "Internal Ed25519 with SHA3";
   }  // namespace crypto
 }  // namespace shared_model

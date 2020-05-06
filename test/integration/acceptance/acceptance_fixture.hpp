@@ -14,6 +14,7 @@
 #include "backend/protobuf/transaction_responses/proto_tx_response.hpp"
 #include "cryptography/keypair.hpp"
 #include "framework/common_constants.hpp"
+#include "interfaces/common_objects/string_view_types.hpp"
 #include "interfaces/permissions.hpp"
 #include "interfaces/query_responses/query_response.hpp"
 #include "interfaces/transaction_responses/tx_response.hpp"
@@ -71,7 +72,7 @@ class AcceptanceFixture : public ::testing::Test {
    */
   TestUnsignedTransactionBuilder createUser(
       const shared_model::interface::types::AccountNameType &user,
-      const shared_model::crypto::PublicKey &key);
+      shared_model::interface::types::PublicKeyHexStringView key);
 
   /**
    * Creates a set of transactions for user creation with specified permissions
@@ -83,7 +84,7 @@ class AcceptanceFixture : public ::testing::Test {
    */
   TestUnsignedTransactionBuilder createUserWithPerms(
       const shared_model::interface::types::AccountNameType &user,
-      const shared_model::crypto::PublicKey &key,
+      shared_model::interface::types::PublicKeyHexStringView key,
       const shared_model::interface::types::RoleIdType &role_id,
       const shared_model::interface::RolePermissionSet &perms);
 
@@ -154,18 +155,19 @@ class AcceptanceFixture : public ::testing::Test {
    * Completes pre-built object with specified keypair for signing
    * @tparam Builder - is a type of a pre-built object
    * @param builder - is a pre-built object
-   * @param keypair - keypair used for signing
+   * @param signer - signer used for signing
    * @return built object
    */
   template <typename Builder>
-  auto complete(Builder builder, const shared_model::crypto::Keypair &keypair)
+  auto complete(Builder builder,
+                const shared_model::crypto::CryptoSigner &signer)
       -> decltype(builder.build()
                       .signAndAddSignature(
-                          std::declval<shared_model::crypto::Keypair>())
+                          std::declval<shared_model::crypto::CryptoSigner>())
                       .finish());
 
   /**
-   * Completes pre-built object with kUserKeypair used for signing
+   * Completes pre-built object with kUserSigner used for signing
    * @param builder is a pre-built object
    * @return built object
    */

@@ -4,10 +4,13 @@
  */
 
 #include <boost/variant.hpp>
+#include "framework/crypto_literals.hpp"
 #include "framework/integration_framework/integration_test_framework.hpp"
 #include "integration/acceptance/acceptance_fixture.hpp"
+#include "module/shared_model/cryptography/crypto_defaults.hpp"
 
 using namespace common_constants;
+using namespace shared_model::interface::types;
 
 class AcceptanceTest : public AcceptanceFixture {
  public:
@@ -50,8 +53,8 @@ class AcceptanceTest : public AcceptanceFixture {
 TEST_F(AcceptanceTest, NonExistentCreatorAccountId) {
   const std::string kNonUser = "nonuser@test";
   integration_framework::IntegrationTestFramework(1)
-      .setInitialState(kAdminKeypair)
-      .sendTx(complete(baseTx<>().creatorAccountId(kNonUser), kAdminKeypair),
+      .setInitialState(kAdminSigner)
+      .sendTx(complete(baseTx<>().creatorAccountId(kNonUser), *kAdminSigner),
               checkStatelessValidStatus)
       .checkProposal(checkProposal)
       .checkVerifiedProposal(
@@ -70,10 +73,10 @@ TEST_F(AcceptanceTest, NonExistentCreatorAccountId) {
  */
 TEST_F(AcceptanceTest, Transaction1HourOld) {
   integration_framework::IntegrationTestFramework(1)
-      .setInitialState(kAdminKeypair)
+      .setInitialState(kAdminSigner)
       .sendTx(complete(baseTx<>().createdTime(
                            iroha::time::now(std::chrono::hours(-1))),
-                       kAdminKeypair),
+                       *kAdminSigner),
               checkStatelessValidStatus)
       .skipProposal()
       .skipVerifiedProposal()
@@ -90,10 +93,10 @@ TEST_F(AcceptanceTest, Transaction1HourOld) {
  */
 TEST_F(AcceptanceTest, DISABLED_TransactionLess24HourOld) {
   integration_framework::IntegrationTestFramework(1)
-      .setInitialState(kAdminKeypair)
+      .setInitialState(kAdminSigner)
       .sendTx(complete(baseTx<>().createdTime(iroha::time::now(
                            std::chrono::hours(24) - std::chrono::minutes(1))),
-                       kAdminKeypair),
+                       *kAdminSigner),
               checkStatelessValidStatus)
       .skipProposal()
       .skipVerifiedProposal()
@@ -109,10 +112,10 @@ TEST_F(AcceptanceTest, DISABLED_TransactionLess24HourOld) {
  */
 TEST_F(AcceptanceTest, TransactionMore24HourOld) {
   integration_framework::IntegrationTestFramework(1)
-      .setInitialState(kAdminKeypair)
+      .setInitialState(kAdminSigner)
       .sendTx(complete(baseTx<>().createdTime(iroha::time::now(
                            std::chrono::hours(24) + std::chrono::minutes(1))),
-                       kAdminKeypair),
+                       *kAdminSigner),
               CHECK_STATELESS_INVALID);
 }
 
@@ -126,10 +129,10 @@ TEST_F(AcceptanceTest, TransactionMore24HourOld) {
  */
 TEST_F(AcceptanceTest, Transaction5MinutesFromFuture) {
   integration_framework::IntegrationTestFramework(1)
-      .setInitialState(kAdminKeypair)
+      .setInitialState(kAdminSigner)
       .sendTx(complete(baseTx<>().createdTime(iroha::time::now(
                            std::chrono::minutes(5) - std::chrono::seconds(10))),
-                       kAdminKeypair),
+                       *kAdminSigner),
               checkStatelessValidStatus)
       .skipProposal()
       .skipVerifiedProposal()
@@ -145,10 +148,10 @@ TEST_F(AcceptanceTest, Transaction5MinutesFromFuture) {
  */
 TEST_F(AcceptanceTest, Transaction10MinutesFromFuture) {
   integration_framework::IntegrationTestFramework(1)
-      .setInitialState(kAdminKeypair)
+      .setInitialState(kAdminSigner)
       .sendTx(complete(baseTx<>().createdTime(
                            iroha::time::now(std::chrono::minutes(10))),
-                       kAdminKeypair),
+                       *kAdminSigner),
               CHECK_STATELESS_INVALID);
 }
 
@@ -160,17 +163,13 @@ TEST_F(AcceptanceTest, Transaction10MinutesFromFuture) {
  * @then receive STATELESS_VALIDATION_FAILED status
  */
 TEST_F(AcceptanceTest, TransactionEmptyPubKey) {
-  using namespace std::literals;
   shared_model::proto::Transaction tx =
       baseTx<TestTransactionBuilder>().build();
 
-  auto signedBlob = shared_model::crypto::CryptoSigner<>::sign(
-      shared_model::crypto::Blob(tx.payload()), kAdminKeypair);
-  tx.addSignature(
-      shared_model::interface::types::SignedHexStringView{signedBlob.hex()},
-      shared_model::interface::types::PublicKeyHexStringView{""sv});
+  auto signature_hex = kAdminSigner->sign(tx.payload());
+  tx.addSignature(SignedHexStringView{signature_hex}, ""_hex_pubkey);
   integration_framework::IntegrationTestFramework(1)
-      .setInitialState(kAdminKeypair)
+      .setInitialState(kAdminSigner)
       .sendTx(tx, CHECK_STATELESS_INVALID);
 }
 
@@ -187,11 +186,9 @@ TEST_F(AcceptanceTest, TransactionEmptySignedblob) {
   using namespace std::literals;
   shared_model::proto::Transaction tx =
       baseTx<TestTransactionBuilder>().build();
-  tx.addSignature(shared_model::interface::types::SignedHexStringView{""sv},
-                  shared_model::interface::types::PublicKeyHexStringView{
-                      kAdminKeypair.publicKey().hex()});
+  tx.addSignature(""_hex_sign, kAdminSigner->publicKey());
   integration_framework::IntegrationTestFramework(1)
-      .setInitialState(kAdminKeypair)
+      .setInitialState(kAdminSigner)
       .sendTx(tx, CHECK_STATELESS_INVALID);
 }
 
@@ -205,15 +202,10 @@ TEST_F(AcceptanceTest, TransactionEmptySignedblob) {
 TEST_F(AcceptanceTest, TransactionInvalidPublicKey) {
   shared_model::proto::Transaction tx =
       baseTx<TestTransactionBuilder>().build();
-  auto signedBlob = shared_model::crypto::CryptoSigner<>::sign(
-      shared_model::crypto::Blob(tx.payload()), kAdminKeypair);
-  shared_model::crypto::PublicKey public_key{std::string(
-      shared_model::crypto::DefaultCryptoAlgorithmType::kPublicKeyLength, 'a')};
-  tx.addSignature(
-      shared_model::interface::types::SignedHexStringView{signedBlob.hex()},
-      shared_model::interface::types::PublicKeyHexStringView{public_key.hex()});
+  auto signature_hex = kAdminSigner->sign(tx.payload());
+  tx.addSignature(SignedHexStringView{signature_hex}, kUserSigner->publicKey());
   integration_framework::IntegrationTestFramework(1)
-      .setInitialState(kAdminKeypair)
+      .setInitialState(kAdminSigner)
       .sendTx(tx, CHECK_STATELESS_INVALID);
 }
 
@@ -228,19 +220,13 @@ TEST_F(AcceptanceTest, TransactionInvalidSignedBlob) {
   shared_model::proto::Transaction tx =
       baseTx<TestTransactionBuilder>().build();
 
-  auto signedBlob = shared_model::crypto::CryptoSigner<>::sign(
-      shared_model::crypto::Blob(tx.payload()), kAdminKeypair);
-  auto raw = signedBlob.blob();
-  raw[0] = (raw[0] == std::numeric_limits<uint8_t>::max() ? 0 : raw[0] + 1);
-  shared_model::crypto::Signed wrongBlob{raw};
-
+  auto wrong_signature = kUserSigner->sign(tx.payload());
   tx.addSignature(
-      shared_model::interface::types::SignedHexStringView{wrongBlob.hex()},
-      shared_model::interface::types::PublicKeyHexStringView{
-          kAdminKeypair.publicKey().hex()});
+      shared_model::interface::types::SignedHexStringView{wrong_signature},
+      kAdminSigner->publicKey());
 
   integration_framework::IntegrationTestFramework(1)
-      .setInitialState(kAdminKeypair)
+      .setInitialState(kAdminSigner)
       .sendTx(tx, CHECK_STATELESS_INVALID);
 }
 
@@ -255,8 +241,8 @@ TEST_F(AcceptanceTest, TransactionInvalidSignedBlob) {
  */
 TEST_F(AcceptanceTest, TransactionValidSignedBlob) {
   integration_framework::IntegrationTestFramework(1)
-      .setInitialState(kAdminKeypair)
-      .sendTx(complete(baseTx<>(), kAdminKeypair), checkStatelessValidStatus)
+      .setInitialState(kAdminSigner)
+      .sendTx(complete(baseTx<>(), *kAdminSigner), checkStatelessValidStatus)
       .skipProposal()
       .skipVerifiedProposal()
       .checkBlock(checkStatefulValid);
@@ -275,6 +261,6 @@ TEST_F(AcceptanceTest, EmptySignatures) {
   auto tx = shared_model::proto::Transaction(proto_tx);
 
   integration_framework::IntegrationTestFramework(1)
-      .setInitialState(kAdminKeypair)
+      .setInitialState(kAdminSigner)
       .sendTx(tx, CHECK_STATELESS_INVALID);
 }

@@ -13,11 +13,11 @@
 #include "builders/protobuf/queries.hpp"
 #include "builders/protobuf/transaction.hpp"
 #include "common/files.hpp"
-#include "cryptography/crypto_provider/crypto_defaults.hpp"
 #include "framework/common_constants.hpp"
 #include "framework/integration_framework/integration_test_framework.hpp"
 #include "framework/test_logger.hpp"
 #include "interfaces/query_responses/transactions_response.hpp"
+#include "module/shared_model/cryptography/crypto_defaults.hpp"
 
 using namespace common_constants;
 using shared_model::interface::permissions::Role;
@@ -37,8 +37,7 @@ TEST(RegressionTest, SequentialInitialization) {
                 .quorum(1)
                 .build()
                 .signAndAddSignature(
-                    shared_model::crypto::DefaultCryptoAlgorithmType::
-                        generateKeypair())
+                    *kSameDomainUserSigner)  // note inconsistent account-signer
                 .finish();
 
   auto check_stateless_valid_status = [](auto &status) {
@@ -55,7 +54,7 @@ TEST(RegressionTest, SequentialInitialization) {
             .substr(0, 8);
   {
     integration_framework::IntegrationTestFramework(1, dbname, false, false)
-        .setInitialState(kAdminKeypair)
+        .setInitialState(kAdminSigner)
         .sendTx(tx, check_stateless_valid_status)
         .skipProposal()
         .checkVerifiedProposal([](auto &proposal) {
@@ -66,7 +65,7 @@ TEST(RegressionTest, SequentialInitialization) {
   }
   {
     integration_framework::IntegrationTestFramework(1, dbname, true, false)
-        .setInitialState(kAdminKeypair)
+        .setInitialState(kAdminSigner)
         .sendTx(tx, check_stateless_valid_status)
         .checkProposal(checkProposal)
         .checkVerifiedProposal([](auto &proposal) {
@@ -83,29 +82,28 @@ TEST(RegressionTest, SequentialInitialization) {
  * @then another ITF instance can restore WSV from blockstore
  */
 TEST(RegressionTest, StateRecovery) {
-  auto userKeypair =
-      shared_model::crypto::DefaultCryptoAlgorithmType::generateKeypair();
-  auto tx = shared_model::proto::TransactionBuilder()
-                .createdTime(iroha::time::now())
-                .creatorAccountId(kAdminId)
-                .createAccount(kUser, kDomain, userKeypair.publicKey())
-                .createRole(kRole, {Role::kReceive})
-                .appendRole(kUserId, kRole)
-                .addAssetQuantity(kAssetId, "133.0")
-                .transferAsset(kAdminId, kUserId, kAssetId, "descrs", "97.8")
-                .quorum(1)
-                .build()
-                .signAndAddSignature(kAdminKeypair)
-                .finish();
+  auto tx =
+      shared_model::proto::TransactionBuilder()
+          .createdTime(iroha::time::now())
+          .creatorAccountId(kAdminId)
+          .createAccount(kUser, kDomain, kSameDomainUserSigner->publicKey())
+          .createRole(kRole, {Role::kReceive})
+          .appendRole(kUserId, kRole)
+          .addAssetQuantity(kAssetId, "133.0")
+          .transferAsset(kAdminId, kUserId, kAssetId, "descrs", "97.8")
+          .quorum(1)
+          .build()
+          .signAndAddSignature(*kAdminSigner)
+          .finish();
   auto hash = tx.hash();
-  auto makeQuery = [&hash](int query_counter, auto kAdminKeypair) {
+  auto makeQuery = [&hash](int query_counter) {
     return shared_model::proto::QueryBuilder()
         .createdTime(iroha::time::now())
         .creatorAccountId(kAdminId)
         .queryCounter(query_counter)
         .getTransactions(std::vector<shared_model::crypto::Hash>{hash})
         .build()
-        .signAndAddSignature(kAdminKeypair)
+        .signAndAddSignature(*kAdminSigner)
         .finish();
   };
   auto checkOne = [](auto &res) { ASSERT_EQ(res->transactions().size(), 1); };
@@ -124,17 +122,17 @@ TEST(RegressionTest, StateRecovery) {
 
   {
     integration_framework::IntegrationTestFramework(1, dbname, false, false)
-        .setInitialState(kAdminKeypair)
+        .setInitialState(kAdminSigner)
         .sendTx(tx)
         .checkProposal(checkOne)
         .checkVerifiedProposal(checkOne)
         .checkBlock(checkOne)
-        .sendQuery(makeQuery(1, kAdminKeypair), checkQuery);
+        .sendQuery(makeQuery(1), checkQuery);
   }
   {
     integration_framework::IntegrationTestFramework(1, dbname, true, false)
-        .recoverState(kAdminKeypair)
-        .sendQuery(makeQuery(2, kAdminKeypair), checkQuery);
+        .recoverState(kAdminSigner)
+        .sendQuery(makeQuery(2), checkQuery);
   }
 }
 
@@ -145,7 +143,7 @@ TEST(RegressionTest, StateRecovery) {
  */
 TEST(RegressionTest, DoubleCallOfDone) {
   integration_framework::IntegrationTestFramework itf(1);
-  itf.setInitialState(kAdminKeypair).done();
+  itf.setInitialState(kAdminSigner).done();
   itf.done();
 }
 

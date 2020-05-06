@@ -13,6 +13,7 @@
 #include "common/bind.hpp"
 #include "endpoint.pb.h"
 #include "framework/batch_helper.hpp"
+#include "framework/common_constants.hpp"
 #include "framework/result_fixture.hpp"
 #include "interfaces/common_objects/types.hpp"
 #include "interfaces/iroha_internal/transaction_sequence.hpp"
@@ -23,9 +24,11 @@
 #include "module/shared_model/builders/protobuf/test_proposal_builder.hpp"
 #include "module/shared_model/builders/protobuf/test_query_builder.hpp"
 #include "module/shared_model/builders/protobuf/test_transaction_builder.hpp"
+#include "module/shared_model/cryptography/crypto_defaults.hpp"
 #include "validators/default_validator.hpp"
 #include "validators/transactions_collection/batch_order_validator.hpp"
 
+using namespace common_constants;
 using namespace shared_model;
 using namespace shared_model::proto;
 using namespace iroha::expected;
@@ -66,7 +69,7 @@ class TransportBuilderTest : public ::testing::Test {
     return getBaseTransactionBuilder<shared_model::proto::TransactionBuilder>()
         .creatorAccountId(account_id)
         .build()
-        .signAndAddSignature(keypair)
+        .signAndAddSignature(*kUserSigner)
         .finish();
   }
 
@@ -74,7 +77,7 @@ class TransportBuilderTest : public ::testing::Test {
     return getBaseTransactionBuilder<TestTransactionBuilder>()
         .creatorAccountId(invalid_account_id)
         .build()
-        .signAndAddSignature(keypair)
+        .signAndAddSignature(*kUserSigner)
         .finish();
   }
 
@@ -91,7 +94,7 @@ class TransportBuilderTest : public ::testing::Test {
     return getBaseQueryBuilder<shared_model::proto::QueryBuilder>()
         .creatorAccountId(account_id)
         .build()
-        .signAndAddSignature(keypair)
+        .signAndAddSignature(*kUserSigner)
         .finish();
   }
 
@@ -99,7 +102,7 @@ class TransportBuilderTest : public ::testing::Test {
     return getBaseQueryBuilder<TestUnsignedQueryBuilder>()
         .creatorAccountId(invalid_account_id)
         .build()
-        .signAndAddSignature(keypair)
+        .signAndAddSignature(*kUserSigner)
         .finish();
   }
 
@@ -115,7 +118,7 @@ class TransportBuilderTest : public ::testing::Test {
     return getBaseBlockBuilder<shared_model::proto::BlockBuilder>()
         .prevHash(hash)
         .build()
-        .signAndAddSignature(keypair)
+        .signAndAddSignature(*kUserSigner)
         .finish();
   }
 
@@ -194,8 +197,6 @@ class TransportBuilderTest : public ::testing::Test {
   uint64_t height;
 
   std::string invalid_account_id;
-  shared_model::crypto::Keypair keypair =
-      shared_model::crypto::DefaultCryptoAlgorithmType::generateKeypair();
 };
 
 //-------------------------------------TRANSACTION-------------------------------------

@@ -10,9 +10,9 @@
 
 #include "builders/protobuf/builder_templates/transaction_template.hpp"
 #include "consensus/consensus_block_cache.hpp"
-#include "cryptography/crypto_provider/crypto_defaults.hpp"
 #include "cryptography/hash.hpp"
 #include "datetime/time.hpp"
+#include "framework/crypto_dummies.hpp"
 #include "framework/test_logger.hpp"
 #include "framework/test_subscriber.hpp"
 #include "module/irohad/ametsuchi/mock_block_query.hpp"
@@ -21,11 +21,14 @@
 #include "module/irohad/ametsuchi/mock_peer_query_factory.hpp"
 #include "module/shared_model/builders/protobuf/test_block_builder.hpp"
 #include "module/shared_model/builders/protobuf/test_transaction_builder.hpp"
+#include "module/shared_model/cryptography/crypto_defaults.hpp"
+#include "module/shared_model/cryptography/make_default_crypto_signer.hpp"
 #include "module/shared_model/interface_mocks.hpp"
 #include "network/impl/block_loader_impl.hpp"
 #include "network/impl/block_loader_service.hpp"
 #include "validators/default_validator.hpp"
 
+using namespace std::literals;
 using namespace iroha::network;
 using namespace iroha::ametsuchi;
 using namespace framework::test_subscriber;
@@ -90,7 +93,7 @@ class BlockLoaderTest : public testing::Test {
                       .createdTime(iroha::time::now())
                       .quorum(1)
                       .build()
-                      .signAndAddSignature(key)
+                      .signAndAddSignature(*signer)
                       .finish());
     return shared_model::proto::TemplateBlockBuilder<
                (1 << shared_model::proto::TemplateBlockBuilder<>::total) - 1,
@@ -105,9 +108,8 @@ class BlockLoaderTest : public testing::Test {
 
   std::shared_ptr<MockPeer> peer;
   std::string address;
-  PublicKey peer_key =
-      DefaultCryptoAlgorithmType::generateKeypair().publicKey();
-  Keypair key = DefaultCryptoAlgorithmType::generateKeypair();
+  shared_model::interface::types::PublicKeyHexStringView peer_key{"peer_key"sv};
+  std::shared_ptr<CryptoSigner> signer = makeDefaultSigner();
   std::shared_ptr<MockPeerQuery> peer_query;
   std::shared_ptr<MockPeerQueryFactory> peer_query_factory;
   std::shared_ptr<MockBlockQuery> storage;
@@ -126,7 +128,8 @@ class BlockLoaderTest : public testing::Test {
  * @then nothing is returned
  */
 TEST_F(BlockLoaderTest, ValidWhenSameTopBlock) {
-  auto block = getBaseBlockBuilder().build().signAndAddSignature(key).finish();
+  auto block =
+      getBaseBlockBuilder().build().signAndAddSignature(*signer).finish();
 
   EXPECT_CALL(*peer_query, getLedgerPeers())
       .WillOnce(Return(std::vector<wPeer>{peer}));
@@ -151,14 +154,14 @@ TEST_F(BlockLoaderTest, ValidWhenOneBlock) {
   auto block = getBaseBlockBuilder()
                    .createdTime(228)
                    .build()
-                   .signAndAddSignature(key)
+                   .signAndAddSignature(*signer)
                    .finish();
 
   auto top_block = getBaseBlockBuilder()
                        .createdTime(block.createdTime() + 1)
                        .height(block.height() + 1)
                        .build()
-                       .signAndAddSignature(key)
+                       .signAndAddSignature(*signer)
                        .finish();
 
   EXPECT_CALL(*peer_query, getLedgerPeers())
@@ -187,7 +190,7 @@ TEST_F(BlockLoaderTest, ValidWhenMultipleBlocks) {
   auto block = getBaseBlockBuilder()
                    .createdTime(1337)
                    .build()
-                   .signAndAddSignature(key)
+                   .signAndAddSignature(*signer)
                    .finish();
 
   auto num_blocks = 2;
@@ -199,7 +202,7 @@ TEST_F(BlockLoaderTest, ValidWhenMultipleBlocks) {
     auto blk = getBaseBlockBuilder()
                    .height(i)
                    .build()
-                   .signAndAddSignature(key)
+                   .signAndAddSignature(*signer)
                    .finish();
 
     EXPECT_CALL(*storage, getBlock(i))
@@ -230,7 +233,7 @@ MATCHER_P(RefAndPointerEq, arg1, "") {
 TEST_F(BlockLoaderTest, ValidWhenBlockPresent) {
   // Request existing block => success
   auto block = std::make_shared<shared_model::proto::Block>(
-      getBaseBlockBuilder().build().signAndAddSignature(key).finish());
+      getBaseBlockBuilder().build().signAndAddSignature(*signer).finish());
   block_cache->insert(block);
 
   EXPECT_CALL(*peer_query, getLedgerPeers())
@@ -253,11 +256,11 @@ TEST_F(BlockLoaderTest, ValidWhenBlockPresent) {
  */
 TEST_F(BlockLoaderTest, ValidWhenBlockMissing) {
   auto prev_block = std::make_shared<shared_model::proto::Block>(
-      getBaseBlockBuilder().build().signAndAddSignature(key).finish());
+      getBaseBlockBuilder().build().signAndAddSignature(*signer).finish());
   auto cur_block = std::make_shared<shared_model::proto::Block>(
       getBaseBlockBuilder(prev_block->hash(), prev_block->height() + 1)
           .build()
-          .signAndAddSignature(key)
+          .signAndAddSignature(*signer)
           .finish());
   block_cache->insert(cur_block);
 
@@ -280,11 +283,11 @@ TEST_F(BlockLoaderTest, ValidWhenBlockMissing) {
  */
 TEST_F(BlockLoaderTest, ValidWithEmptyCache) {
   auto prev_block = std::make_shared<shared_model::proto::Block>(
-      getBaseBlockBuilder().build().signAndAddSignature(key).finish());
+      getBaseBlockBuilder().build().signAndAddSignature(*signer).finish());
   auto cur_block = std::make_shared<shared_model::proto::Block>(
       getBaseBlockBuilder(prev_block->hash(), prev_block->height() + 1)
           .build()
-          .signAndAddSignature(key)
+          .signAndAddSignature(*signer)
           .finish());
 
   EXPECT_CALL(*peer_query, getLedgerPeers())

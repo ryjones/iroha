@@ -6,10 +6,12 @@
 #include <gtest/gtest.h>
 
 #include "backend/protobuf/common_objects/proto_common_objects_factory.hpp"
-#include "cryptography/crypto_provider/crypto_defaults.hpp"
+#include "common/hexutils.hpp"
 #include "framework/result_fixture.hpp"
 #include "framework/stateless_valid_field_helpers.hpp"
+#include "framework/crypto_literals.hpp"
 #include "module/irohad/common/validators_config.hpp"
+#include "module/shared_model/cryptography/crypto_defaults.hpp"
 #include "validators/field_validator.hpp"
 
 using namespace shared_model;
@@ -28,8 +30,7 @@ class ProtoFixture : public ::testing::Test {
 class PeerTest : public ProtoFixture {
  public:
   std::string valid_address = "127.0.0.1:8080";
-  std::string valid_pubkey =
-      crypto::DefaultCryptoAlgorithmType::generateKeypair().publicKey().hex();
+  interface::types::PublicKeyHexStringView valid_pubkey{"600D"_hex_pubkey};
   std::string invalid_address = "127.0.0.1";
 
   void testValidPeerCreation(const std::string &address,
@@ -238,10 +239,10 @@ TEST_F(DomainTest, InvalidDomainInitialization) {
 class SignatureTest : public ProtoFixture {
  public:
   std::string valid_pubkey =
-      crypto::PublicKey{framework::padPubKeyString("valid_pubkey")}.hex();
+      iroha::bytestringToHexstring(framework::padPubKeyString("valid_pubkey"));
   std::string valid_data =
       crypto::Signed{framework::padSignatureString("valid_signature")}.hex();
-  std::string invalid_pubkey{"0a0b"};
+  std::string invalid_pubkey{"not hex"};
 };
 
 /**

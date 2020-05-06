@@ -204,16 +204,6 @@ inline auto makePeer(
   return peer;
 }
 
-inline auto makePeer(
-    std::string_view address,
-    const shared_model::crypto::PublicKey &pub_key,
-    const std::optional<shared_model::interface::types::TLSCertificateType>
-        &tls_certificate = std::nullopt) {
-  using shared_model::interface::types::PublicKeyHexStringView;
-  return makePeer(
-      address, PublicKeyHexStringView{pub_key.hex()}, tls_certificate);
-}
-
 struct MockUnsafeProposalFactory
     : public shared_model::interface::UnsafeProposalFactory {
   MOCK_METHOD3(unsafeCreateProposal,

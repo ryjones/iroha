@@ -6,32 +6,39 @@
 #include "consensus/yac/impl/yac_crypto_provider_impl.hpp"
 
 #include "backend/plain/signature.hpp"
+#include "common/result.hpp"
 #include "consensus/yac/transport/yac_pb_converters.hpp"
 #include "cryptography/crypto_provider/crypto_signer.hpp"
 #include "cryptography/crypto_provider/crypto_verifier.hpp"
+#include "cryptography/signed.hpp"
+#include "logger/logger.hpp"
 
 namespace iroha {
   namespace consensus {
     namespace yac {
       CryptoProviderImpl::CryptoProviderImpl(
-          const shared_model::crypto::Keypair &keypair)
-          : keypair_(keypair) {}
+          std::shared_ptr<shared_model::crypto::CryptoSigner> crypto_signer,
+          logger::LoggerPtr log)
+          : crypto_signer_(std::move(crypto_signer)), log_(std::move(log)) {}
 
       bool CryptoProviderImpl::verify(const std::vector<VoteMessage> &msg) {
         return std::all_of(
-            std::begin(msg), std::end(msg), [](const auto &vote) {
+            std::begin(msg), std::end(msg), [this](const auto &vote) {
               auto serialized =
                   PbConverters::serializeVote(vote).hash().SerializeAsString();
               auto blob = shared_model::crypto::Blob(serialized);
 
-              return shared_model::crypto::CryptoVerifier<>::verify(
-                  shared_model::crypto::Signed(
-                      shared_model::crypto::Blob::fromHexString(
-                          vote.signature->signedData())),
-                  blob,
-                  shared_model::crypto::PublicKey(
-                      shared_model::crypto::Blob::fromHexString(
-                          vote.signature->publicKey())));
+              using namespace shared_model::interface::types;
+              return shared_model::crypto::CryptoVerifier::verify(
+                         SignedHexStringView{vote.signature->signedData()},
+                         blob,
+                         PublicKeyHexStringView{vote.signature->publicKey()})
+                  .match([](const auto &) { return true; },
+                         [this](const auto &error) {
+                           log_->debug("Vote signature verification failed: {}",
+                                       error.error);
+                           return false;
+                         });
             });
       }
 
@@ -41,15 +48,14 @@ namespace iroha {
         auto serialized =
             PbConverters::serializeVotePayload(vote).hash().SerializeAsString();
         auto blob = shared_model::crypto::Blob(serialized);
-        const auto &pubkey = keypair_.publicKey();
-        const auto &privkey = keypair_.privateKey();
-        auto signature = shared_model::crypto::CryptoSigner<>::sign(
-            blob, shared_model::crypto::Keypair(pubkey, privkey));
+        const auto &pubkey = crypto_signer_->publicKey();
+        auto signature = crypto_signer_->sign(blob);
 
         // TODO 30.08.2018 andrei: IR-1670 Remove optional from YAC
         // CryptoProviderImpl::getVote
+        using namespace shared_model::interface::types;
         vote.signature = std::make_shared<shared_model::plain::Signature>(
-            signature.hex(), pubkey.hex());
+            SignedHexStringView{signature}, pubkey);
 
         return vote;
       }

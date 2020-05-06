@@ -6,9 +6,9 @@
 #include "integration/executor/executor_fixture.hpp"
 
 #include <gtest/gtest.h>
-#include "cryptography/crypto_provider/crypto_defaults.hpp"
 #include "framework/common_constants.hpp"
 #include "framework/result_gtest_checkers.hpp"
+#include "framework/crypto_literals.hpp"
 #include "integration/executor/command_permission_test.hpp"
 #include "integration/executor/executor_fixture_param_provider.hpp"
 #include "module/shared_model/mock_objects_factories/mock_command_factory.hpp"
@@ -22,16 +22,14 @@ using namespace shared_model::interface::types;
 using shared_model::interface::permissions::Grantable;
 using shared_model::interface::permissions::Role;
 
-const auto kNewPubkey =
-    shared_model::crypto::DefaultCryptoAlgorithmType::generateKeypair()
-        .publicKey();
+const auto kNewPubkey{"hey im new here"_hex_pubkey};
 
 class AddSignatoryTest : public ExecutorTestBase {
  public:
   iroha::ametsuchi::CommandResult addSignatory(
       const AccountIdType &issuer,
       const AccountIdType &target = kUserId,
-      const PubkeyType &pubkey = kNewPubkey,
+      PublicKeyHexStringView pubkey = kNewPubkey,
       bool validation_enabled = true) {
     return getItf().executeCommandAsAccount(
         *getItf().getMockCommandFactory()->constructAddSignatory(pubkey,
@@ -61,12 +59,12 @@ TEST_P(AddSignatoryBasicTest, NonExistentUser) {
  */
 TEST_P(AddSignatoryBasicTest, ExistingPubKey) {
   IROHA_ASSERT_RESULT_VALUE(getItf().createUserWithPerms(
-      kUser, kDomain, kUserKeypair.publicKey(), {}));
+      kUser, kDomain, kUserSigner->publicKey(), {}));
 
-  checkCommandError(addSignatory(kAdminId, kUserId, kUserKeypair.publicKey()),
+  checkCommandError(addSignatory(kAdminId, kUserId, kUserSigner->publicKey()),
                     4);
 
-  checkSignatories(kUserId, {kUserKeypair.publicKey()});
+  checkSignatories(kUserId, {kUserSigner->publicKey()});
 }
 
 INSTANTIATE_TEST_SUITE_P(Base,
@@ -81,13 +79,13 @@ TEST_P(AddSignatoryPermissionTest, CommandPermissionTest) {
   ASSERT_NO_FATAL_FAILURE(getItf().createDomain(kSecondDomain));
   ASSERT_NO_FATAL_FAILURE(prepareState({}));
   ASSERT_NO_FATAL_FAILURE(
-      checkSignatories(kUserId, {kUserKeypair.publicKey()}));
+      checkSignatories(kUserId, {kUserSigner->publicKey()}));
 
   if (checkResponse(addSignatory(
           getActor(), kUserId, kNewPubkey, getValidationEnabled()))) {
-    checkSignatories(kUserId, {kUserKeypair.publicKey(), kNewPubkey});
+    checkSignatories(kUserId, {kUserSigner->publicKey(), kNewPubkey});
   } else {
-    checkSignatories(kUserId, {kUserKeypair.publicKey()});
+    checkSignatories(kUserId, {kUserSigner->publicKey()});
   }
 }
 

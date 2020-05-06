@@ -5,15 +5,31 @@
 
 #include <memory>
 
+#include "validators/validation_error_output.hpp"
+
 #include <gtest/gtest.h>
 
-#include "cryptography/crypto_provider/crypto_model_signer.hpp"
+#include "cryptography/crypto_provider/crypto_signer_internal.hpp"
 #include "cryptography/crypto_provider/crypto_verifier.hpp"
+#include "framework/result_gtest_checkers.hpp"
+#include "module/irohad/common/validators_config.hpp"
 #include "module/shared_model/builders/protobuf/test_block_builder.hpp"
 #include "module/shared_model/builders/protobuf/test_query_builder.hpp"
 #include "module/shared_model/builders/protobuf/test_transaction_builder.hpp"
+#include "module/shared_model/cryptography/crypto_defaults.hpp"
+#include "module/shared_model/cryptography/make_default_crypto_signer.hpp"
+#include "validators/field_validator.hpp"
 
+using namespace common_constants;
 using namespace shared_model::crypto;
+using namespace shared_model::interface::types;
+
+using shared_model::validation::ValidationError;
+
+static const auto kBadSignatureMatcher{::testing::Optional(::testing::Property(
+    &ValidationError::toString, ::testing::HasSubstr("Bad signature")))};
+static const auto kNoSignatureMatcher{::testing::Optional(::testing::Property(
+    &ValidationError::toString, ::testing::HasSubstr("Signatures are empty")))};
 
 class CryptoUsageTest : public ::testing::Test {
  public:
@@ -46,34 +62,30 @@ class CryptoUsageTest : public ::testing::Test {
   template <typename T>
   void signIncorrect(T &signable) {
     // initialize wrong signature
-    auto signedBlob = shared_model::crypto::DefaultCryptoAlgorithmType::sign(
-        shared_model::crypto::Blob("wrong payload"), keypair);
-    signable.addSignature(
-        shared_model::interface::types::SignedHexStringView{signedBlob.hex()},
-        shared_model::interface::types::PublicKeyHexStringView{
-            keypair.publicKey().hex()});
+    auto signature_hex =
+        signer_->sign(shared_model::crypto::Blob{"wrong payload"});
+    signable.addSignature(SignedHexStringView{signature_hex},
+                          signer_->publicKey());
   }
 
   template <typename T>
-  bool verify(const T &signable) const {
-    return boost::size(signable.signatures()) > 0
-        and std::all_of(
-                signable.signatures().begin(),
-                signable.signatures().end(),
-                [&signable](const auto &signature) {
-                  return shared_model::crypto::CryptoVerifier<>::verify(
-                      Signed(Blob::fromHexString(signature.signedData())),
-                      signable.payload(),
-                      PublicKey(Blob::fromHexString(signature.publicKey())));
-                });
+  std::optional<ValidationError> verify(const T &signable) const {
+    return field_validator_.validateSignatures(signable.signatures(),
+                                               signable.payload());
   }
 
   Blob data;
-  shared_model::crypto::Keypair keypair =
-      shared_model::crypto::DefaultCryptoAlgorithmType::generateKeypair();
+  std::shared_ptr<shared_model::crypto::CryptoSigner> signer_ =
+      shared_model::crypto::makeDefaultSigner();
 
-  shared_model::crypto::CryptoModelSigner<> signer =
-      shared_model::crypto::CryptoModelSigner<>(keypair);
+  template <typename T>
+  void sign(T &o) {
+    o.addSignature(SignedHexStringView{signer_->sign(o.payload())},
+                   signer_->publicKey());
+  }
+
+  shared_model::validation::FieldValidator field_validator_{
+      iroha::test::kTestsValidatorsConfig};
 
   std::unique_ptr<shared_model::proto::Block> block;
   std::unique_ptr<shared_model::proto::Query> query;
@@ -86,11 +98,11 @@ class CryptoUsageTest : public ::testing::Test {
  * @then check that siganture valid without clarification of algorithm
  */
 TEST_F(CryptoUsageTest, RawSignAndVerifyTest) {
-  auto signed_blob =
-      shared_model::crypto::DefaultCryptoAlgorithmType::sign(data, keypair);
-  auto verified = DefaultCryptoAlgorithmType::verify(
-      signed_blob, data, keypair.publicKey());
-  ASSERT_TRUE(verified);
+  auto signature_hex = signer_->sign(data);
+  using namespace shared_model::interface::types;
+  auto verified = CryptoVerifier::verify(
+      SignedHexStringView{signature_hex}, data, signer_->publicKey());
+  IROHA_ASSERT_RESULT_VALUE(verified);
 }
 
 /**
@@ -99,7 +111,7 @@ TEST_F(CryptoUsageTest, RawSignAndVerifyTest) {
  * @then block is not verified
  */
 TEST_F(CryptoUsageTest, UnsignedBlock) {
-  ASSERT_FALSE(verify(*block));
+  ASSERT_THAT(verify(*block), kNoSignatureMatcher);
 }
 
 /**
@@ -108,9 +120,9 @@ TEST_F(CryptoUsageTest, UnsignedBlock) {
  * @then block is verified
  */
 TEST_F(CryptoUsageTest, SignAndVerifyBlock) {
-  signer.sign(*block);
+  sign(*block);
 
-  ASSERT_TRUE(verify(*block));
+  EXPECT_EQ(verify(*block), std::nullopt);
 }
 
 /**
@@ -121,7 +133,7 @@ TEST_F(CryptoUsageTest, SignAndVerifyBlock) {
 TEST_F(CryptoUsageTest, SignAndVerifyBlockWithWrongSignature) {
   signIncorrect(*block);
 
-  ASSERT_FALSE(verify(*block));
+  EXPECT_THAT(verify(*block), kBadSignatureMatcher);
 }
 
 /**
@@ -130,7 +142,7 @@ TEST_F(CryptoUsageTest, SignAndVerifyBlockWithWrongSignature) {
  * @then query is not verified
  */
 TEST_F(CryptoUsageTest, UnsignedQuery) {
-  ASSERT_FALSE(verify(*query));
+  ASSERT_THAT(verify(*query), kNoSignatureMatcher);
 }
 
 /**
@@ -139,9 +151,9 @@ TEST_F(CryptoUsageTest, UnsignedQuery) {
  * @then query is verified
  */
 TEST_F(CryptoUsageTest, SignAndVerifyQuery) {
-  signer.sign(*query);
+  sign(*query);
 
-  ASSERT_TRUE(verify(*query));
+  EXPECT_EQ(verify(*query), std::nullopt);
 }
 
 /**
@@ -152,7 +164,7 @@ TEST_F(CryptoUsageTest, SignAndVerifyQuery) {
 TEST_F(CryptoUsageTest, SignAndVerifyQuerykWithWrongSignature) {
   signIncorrect(*query);
 
-  ASSERT_FALSE(verify(*query));
+  EXPECT_THAT(verify(*query), kBadSignatureMatcher);
 }
 
 /**
@@ -162,7 +174,7 @@ TEST_F(CryptoUsageTest, SignAndVerifyQuerykWithWrongSignature) {
  */
 TEST_F(CryptoUsageTest, SameQueryHashAfterSign) {
   auto hash_before = query->hash();
-  signer.sign(*query);
+  sign(*query);
   auto hash_signed = query->hash();
 
   ASSERT_EQ(hash_signed, hash_before);
@@ -174,7 +186,7 @@ TEST_F(CryptoUsageTest, SameQueryHashAfterSign) {
  * @then transaction is not verified
  */
 TEST_F(CryptoUsageTest, UnsignedTransaction) {
-  ASSERT_FALSE(verify(*transaction));
+  ASSERT_THAT(verify(*transaction), kNoSignatureMatcher);
 }
 
 /**
@@ -183,9 +195,9 @@ TEST_F(CryptoUsageTest, UnsignedTransaction) {
  * @then transaction is verified
  */
 TEST_F(CryptoUsageTest, SignAndVerifyTransaction) {
-  signer.sign(*transaction);
+  sign(*transaction);
 
-  ASSERT_TRUE(verify(*transaction));
+  EXPECT_EQ(verify(*transaction), std::nullopt);
 }
 
 /**
@@ -196,5 +208,5 @@ TEST_F(CryptoUsageTest, SignAndVerifyTransaction) {
 TEST_F(CryptoUsageTest, SignAndVerifyTransactionkWithWrongSignature) {
   signIncorrect(*transaction);
 
-  ASSERT_FALSE(verify(*transaction));
+  EXPECT_THAT(verify(*transaction), kBadSignatureMatcher);
 }

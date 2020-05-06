@@ -13,21 +13,25 @@
 #include "ametsuchi/mutable_storage.hpp"
 #include "ametsuchi/temporary_wsv.hpp"
 #include "builders/protobuf/transaction.hpp"
+#include "framework/common_constants.hpp"
 #include "framework/result_fixture.hpp"
 #include "framework/test_logger.hpp"
 #include "framework/test_subscriber.hpp"
 #include "module/shared_model/builders/protobuf/test_block_builder.hpp"
 #include "module/shared_model/builders/protobuf/test_transaction_builder.hpp"
+#include "module/shared_model/cryptography/crypto_defaults.hpp"
 
+using namespace common_constants;
 using namespace iroha::ametsuchi;
 using namespace framework::test_subscriber;
 using namespace shared_model::interface::permissions;
+using namespace shared_model::interface::types;
 using framework::expected::err;
 using framework::expected::val;
 
 auto zero_string = std::string(32, '0');
 auto fake_hash = shared_model::crypto::Hash(zero_string);
-auto fake_pubkey = shared_model::crypto::PublicKey(zero_string);
+const PublicKeyHexStringView fake_pubkey{zero_string};
 
 // Allows to print amount string in case of test failure
 namespace shared_model {
@@ -163,15 +167,15 @@ TEST_F(AmetsuchiTest, PeerTest) {
   ASSERT_EQ(peers->size(), 1);
   ASSERT_EQ(peers->at(0)->address(), "192.168.9.1:50051");
 
-  ASSERT_EQ(peers->at(0)->pubkey(), fake_pubkey.hex());
+  ASSERT_EQ(peers->at(0)->pubkey(), fake_pubkey);
 }
 
 TEST_F(AmetsuchiTest, AddSignatoryTest) {
   ASSERT_TRUE(storage);
   auto wsv = storage->getWsvQuery();
 
-  shared_model::crypto::PublicKey pubkey1(std::string(32, '1'));
-  shared_model::crypto::PublicKey pubkey2(std::string(32, '2'));
+  std::string pubkey1{32, '1'};
+  std::string pubkey2{32, '2'};
 
   auto user1id = "userone@domain";
   auto user2id = "usertwo@domain";
@@ -184,7 +188,7 @@ TEST_F(AmetsuchiTest, AddSignatoryTest) {
           .createRole("user",
                       {Role::kAddPeer, Role::kCreateAsset, Role::kGetMyAccount})
           .createDomain("domain", "user")
-          .createAccount("userone", "domain", pubkey1)
+          .createAccount("userone", "domain", PublicKeyHexStringView{pubkey1})
           .build());
   auto block1 = createBlock(txs, 1, fake_hash);
 
@@ -200,14 +204,14 @@ TEST_F(AmetsuchiTest, AddSignatoryTest) {
     auto signatories = wsv->getSignatories(user1id);
     ASSERT_TRUE(signatories);
     ASSERT_EQ(signatories->size(), 1);
-    ASSERT_EQ(signatories->at(0), pubkey1);
+    ASSERT_EQ(signatories->at(0), PublicKeyHexStringView{pubkey1});
   }
 
   // 2nd tx (add sig2 to user1)
   txs.clear();
   txs.push_back(TestTransactionBuilder()
                     .creatorAccountId(user1id)
-                    .addSignatory(user1id, pubkey2)
+                    .addSignatory(user1id, PublicKeyHexStringView{pubkey2})
                     .build());
 
   auto block2 = createBlock(txs, 2, block1->hash());
@@ -221,16 +225,17 @@ TEST_F(AmetsuchiTest, AddSignatoryTest) {
     auto signatories = wsv->getSignatories(user1id);
     ASSERT_TRUE(signatories);
     ASSERT_EQ(signatories->size(), 2);
-    ASSERT_EQ(signatories->at(0), pubkey1);
-    ASSERT_EQ(signatories->at(1), pubkey2);
+    ASSERT_EQ(signatories->at(0), PublicKeyHexStringView{pubkey1});
+    ASSERT_EQ(signatories->at(1), PublicKeyHexStringView{pubkey2});
   }
 
   // 3rd tx (create user2 with pubkey1 that is same as user1's key)
   txs.clear();
-  txs.push_back(TestTransactionBuilder()
-                    .creatorAccountId("admintwo")
-                    .createAccount("usertwo", "domain", pubkey1)
-                    .build());
+  txs.push_back(
+      TestTransactionBuilder()
+          .creatorAccountId("admintwo")
+          .createAccount("usertwo", "domain", PublicKeyHexStringView{pubkey1})
+          .build());
 
   auto block3 = createBlock(txs, 3, block2->hash());
 
@@ -246,20 +251,20 @@ TEST_F(AmetsuchiTest, AddSignatoryTest) {
     auto signatories1 = wsv->getSignatories(user1id);
     ASSERT_TRUE(signatories1);
     ASSERT_EQ(signatories1->size(), 2);
-    ASSERT_EQ(signatories1->at(0), pubkey1);
-    ASSERT_EQ(signatories1->at(1), pubkey2);
+    ASSERT_EQ(signatories1->at(0), PublicKeyHexStringView{pubkey1});
+    ASSERT_EQ(signatories1->at(1), PublicKeyHexStringView{pubkey2});
 
     auto signatories2 = wsv->getSignatories(user2id);
     ASSERT_TRUE(signatories2);
     ASSERT_EQ(signatories2->size(), 1);
-    ASSERT_EQ(signatories2->at(0), pubkey1);
+    ASSERT_EQ(signatories2->at(0), PublicKeyHexStringView{pubkey1});
   }
 
   // 4th tx (remove pubkey1 from user1)
   txs.clear();
   txs.push_back(TestTransactionBuilder()
                     .creatorAccountId(user1id)
-                    .removeSignatory(user1id, pubkey1)
+                    .removeSignatory(user1id, PublicKeyHexStringView{pubkey1})
                     .build());
 
   auto block4 = createBlock(txs, 4, block3->hash());
@@ -274,20 +279,20 @@ TEST_F(AmetsuchiTest, AddSignatoryTest) {
     auto signatories1 = wsv->getSignatories(user1id);
     ASSERT_TRUE(signatories1);
     ASSERT_EQ(signatories1->size(), 1);
-    ASSERT_EQ(signatories1->at(0), pubkey2);
+    ASSERT_EQ(signatories1->at(0), PublicKeyHexStringView{pubkey2});
 
     // user2 still has pubkey1.
     auto signatories2 = wsv->getSignatories(user2id);
     ASSERT_TRUE(signatories2);
     ASSERT_EQ(signatories2->size(), 1);
-    ASSERT_EQ(signatories2->at(0), pubkey1);
+    ASSERT_EQ(signatories2->at(0), PublicKeyHexStringView{pubkey1});
   }
 
   // 5th tx (add sig2 to user2 and set quorum = 1)
   txs.clear();
   txs.push_back(TestTransactionBuilder()
                     .creatorAccountId(user1id)
-                    .addSignatory(user2id, pubkey2)
+                    .addSignatory(user2id, PublicKeyHexStringView{pubkey2})
                     .setAccountQuorum(user2id, 2)
                     .build());
 
@@ -305,15 +310,15 @@ TEST_F(AmetsuchiTest, AddSignatoryTest) {
     auto signatories = wsv->getSignatories(user2id);
     ASSERT_TRUE(signatories);
     ASSERT_EQ(signatories->size(), 2);
-    ASSERT_EQ(signatories->at(0), pubkey1);
-    ASSERT_EQ(signatories->at(1), pubkey2);
+    ASSERT_EQ(signatories->at(0), PublicKeyHexStringView{pubkey1});
+    ASSERT_EQ(signatories->at(1), PublicKeyHexStringView{pubkey2});
   }
 
   // 6th tx (remove sig2 fro user2: This must success)
   txs.clear();
   txs.push_back(TestTransactionBuilder()
                     .creatorAccountId(user2id)
-                    .removeSignatory(user2id, pubkey2)
+                    .removeSignatory(user2id, PublicKeyHexStringView{pubkey2})
                     .setAccountQuorum(user2id, 2)
                     .build());
 
@@ -326,7 +331,7 @@ TEST_F(AmetsuchiTest, AddSignatoryTest) {
     auto signatories = wsv->getSignatories(user2id);
     ASSERT_TRUE(signatories);
     ASSERT_EQ(signatories->size(), 1);
-    ASSERT_EQ(signatories->at(0), pubkey1);
+    ASSERT_EQ(signatories->at(0), PublicKeyHexStringView{pubkey1});
   }
 }
 
@@ -404,24 +409,21 @@ TEST_F(AmetsuchiTest, TestRestoreWSV) {
   std::string default_role = "admin";
 
   std::vector<shared_model::proto::Transaction> genesis_tx;
-  genesis_tx.push_back(
-      shared_model::proto::TransactionBuilder()
-          .creatorAccountId("admin@test")
-          .createdTime(iroha::time::now())
-          .quorum(1)
-          .createRole(default_role,
-                      {Role::kCreateDomain,
-                       Role::kCreateAccount,
-                       Role::kAddAssetQty,
-                       Role::kAddPeer,
-                       Role::kReceive,
-                       Role::kTransfer})
-          .createDomain(default_domain, default_role)
-          .build()
-          .signAndAddSignature(
-              shared_model::crypto::DefaultCryptoAlgorithmType::
-                  generateKeypair())
-          .finish());
+  genesis_tx.push_back(shared_model::proto::TransactionBuilder()
+                           .creatorAccountId("admin@test")
+                           .createdTime(iroha::time::now())
+                           .quorum(1)
+                           .createRole(default_role,
+                                       {Role::kCreateDomain,
+                                        Role::kCreateAccount,
+                                        Role::kAddAssetQty,
+                                        Role::kAddPeer,
+                                        Role::kReceive,
+                                        Role::kTransfer})
+                           .createDomain(default_domain, default_role)
+                           .build()
+                           .signAndAddSignature(*kAdminSigner)
+                           .finish());
 
   auto genesis_block = createBlock(genesis_tx);
 
@@ -457,28 +459,26 @@ TEST_F(AmetsuchiTest, TestRestoreWSV) {
 TEST_F(AmetsuchiTest, TestingWsvAfterCommitBlock) {
   ASSERT_TRUE(storage);
 
-  shared_model::crypto::Keypair key{
-      shared_model::crypto::DefaultCryptoAlgorithmType::generateKeypair()};
-
-  auto genesis_tx = shared_model::proto::TransactionBuilder()
-                        .creatorAccountId("admin@test")
-                        .createdTime(iroha::time::now())
-                        .quorum(1)
-                        .createRole("admin",
-                                    {Role::kCreateDomain,
-                                     Role::kCreateAccount,
-                                     Role::kAddAssetQty,
-                                     Role::kAddPeer,
-                                     Role::kReceive,
-                                     Role::kTransfer})
-                        .createDomain("test", "admin")
-                        .createAccount("admin", "test", key.publicKey())
-                        .createAccount("receiver", "test", key.publicKey())
-                        .createAsset("coin", "test", 2)
-                        .addAssetQuantity("coin#test", "20.00")
-                        .build()
-                        .signAndAddSignature(key)
-                        .finish();
+  auto genesis_tx =
+      shared_model::proto::TransactionBuilder()
+          .creatorAccountId("admin@test")
+          .createdTime(iroha::time::now())
+          .quorum(1)
+          .createRole("admin",
+                      {Role::kCreateDomain,
+                       Role::kCreateAccount,
+                       Role::kAddAssetQty,
+                       Role::kAddPeer,
+                       Role::kReceive,
+                       Role::kTransfer})
+          .createDomain("test", "admin")
+          .createAccount("admin", "test", kAdminSigner->publicKey())
+          .createAccount("receiver", "test", kAdminSigner->publicKey())
+          .createAsset("coin", "test", 2)
+          .addAssetQuantity("coin#test", "20.00")
+          .build()
+          .signAndAddSignature(*kAdminSigner)
+          .finish();
 
   auto genesis_block = createBlock({genesis_tx});
   apply(storage, genesis_block);
@@ -491,7 +491,7 @@ TEST_F(AmetsuchiTest, TestingWsvAfterCommitBlock) {
           .transferAsset(
               "admin@test", "receiver@test", "coin#test", "deal", "10.00")
           .build()
-          .signAndAddSignature(key)
+          .signAndAddSignature(*kAdminSigner)
           .finish();
 
   auto expected_block = createBlock({add_ast_tx}, 2, genesis_block->hash());
@@ -513,10 +513,6 @@ TEST_F(AmetsuchiTest, TestingWsvAfterCommitBlock) {
 
 class PreparedBlockTest : public AmetsuchiTest {
  public:
-  PreparedBlockTest()
-      : key(shared_model::crypto::DefaultCryptoAlgorithmType::
-                generateKeypair()) {}
-
   shared_model::proto::Transaction createAddAsset(const std::string &amount) {
     return shared_model::proto::TransactionBuilder()
         .creatorAccountId("admin@test")
@@ -524,7 +520,7 @@ class PreparedBlockTest : public AmetsuchiTest {
         .quorum(1)
         .addAssetQuantity("coin#test", amount)
         .build()
-        .signAndAddSignature(key)
+        .signAndAddSignature(*kAdminSigner)
         .finish();
   }
 
@@ -543,11 +539,11 @@ class PreparedBlockTest : public AmetsuchiTest {
                                Role::kReceive,
                                Role::kTransfer})
                   .createDomain(default_domain, default_role)
-                  .createAccount("admin", "test", key.publicKey())
+                  .createAccount("admin", "test", kAdminSigner->publicKey())
                   .createAsset("coin", default_domain, 2)
                   .addAssetQuantity("coin#test", base_balance.toStringRepr())
                   .build()
-                  .signAndAddSignature(key)
+                  .signAndAddSignature(*kAdminSigner)
                   .finish());
     genesis_block = createBlock({*genesis_tx});
     initial_tx = clone(createAddAsset("5.00"));
@@ -556,7 +552,6 @@ class PreparedBlockTest : public AmetsuchiTest {
     temp_wsv = storage->createTemporaryWsv(command_executor);
   }
 
-  shared_model::crypto::Keypair key;
   std::string default_domain{"test"};
   std::string default_role{"admin"};
   std::unique_ptr<shared_model::proto::Transaction> genesis_tx;

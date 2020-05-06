@@ -11,6 +11,7 @@
 
 #include "common/cloneable.hpp"
 #include "interfaces/base/model_primitive.hpp"
+#include "interfaces/common_objects/byte_range.hpp"
 
 namespace shared_model {
   namespace crypto {
@@ -32,13 +33,15 @@ namespace shared_model {
        * Create blob from a string
        * @param blob - string to create blob from
        */
-      explicit Blob(const std::string &blob);
+      explicit Blob(const std::string_view &blob);
 
       /**
        * Create blob from a vector
        * @param blob - vector to create blob from
        */
       explicit Blob(const Bytes &blob);
+
+      explicit Blob(shared_model::interface::types::ByteRange range);
 
       explicit Blob(Bytes &&blob) noexcept;
 
@@ -54,6 +57,9 @@ namespace shared_model {
        * @return provides raw representation of blob
        */
       virtual const Bytes &blob() const;
+
+      /// @return range view on the data
+      shared_model::interface::types::ByteRange range() const;
 
       /**
        * @return provides human-readable representation of blob without leading

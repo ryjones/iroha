@@ -8,6 +8,7 @@
 #include "framework/integration_framework/integration_test_framework.hpp"
 #include "integration/acceptance/acceptance_fixture.hpp"
 #include "module/shared_model/builders/protobuf/block.hpp"
+#include "module/shared_model/cryptography/crypto_defaults.hpp"
 
 using namespace integration_framework;
 using namespace shared_model;
@@ -30,22 +31,8 @@ class SetAccountDetail : public AcceptanceFixture {
     return baseTx(account_id, kKey, kValue);
   }
 
-  auto makeSecondUser(const interface::RolePermissionSet &perms = {
-                          interface::permissions::Role::kAddPeer}) {
-    static const std::string kRole2 = "roletwo";
-    return AcceptanceFixture::createUserWithPerms(
-               kUser2, kUser2Keypair.publicKey(), kRole2, perms)
-        .build()
-        .signAndAddSignature(kAdminKeypair)
-        .finish();
-  }
-
   const interface::types::AccountDetailKeyType kKey = "key";
   const interface::types::AccountDetailValueType kValue = "value";
-  const std::string kUser2 = "user2";
-  const std::string kUser2Id = kUser2 + "@" + kDomain;
-  const crypto::Keypair kUser2Keypair =
-      crypto::DefaultCryptoAlgorithmType::generateKeypair();
 };
 
 /**
@@ -59,7 +46,7 @@ class SetAccountDetail : public AcceptanceFixture {
 TEST_F(SetAccountDetail, BigPossibleKey) {
   const std::string kBigKey = std::string(64, 'a');
   IntegrationTestFramework(1)
-      .setInitialState(kAdminKeypair)
+      .setInitialState(kAdminSigner)
       .sendTx(makeUserWithPerms())
       .skipProposal()
       .skipBlock()
@@ -79,7 +66,7 @@ TEST_F(SetAccountDetail, BigPossibleKey) {
 TEST_F(SetAccountDetail, EmptyKey) {
   const std::string kEmptyKey = "";
   IntegrationTestFramework(1)
-      .setInitialState(kAdminKeypair)
+      .setInitialState(kAdminSigner)
       .sendTx(makeUserWithPerms())
       .skipProposal()
       .skipBlock()
@@ -98,7 +85,7 @@ TEST_F(SetAccountDetail, EmptyKey) {
 TEST_F(SetAccountDetail, EmptyValue) {
   const std::string kEmptyValue = "";
   IntegrationTestFramework(1)
-      .setInitialState(kAdminKeypair)
+      .setInitialState(kAdminSigner)
       .sendTx(makeUserWithPerms())
       .skipProposal()
       .skipBlock()
@@ -120,7 +107,7 @@ TEST_F(SetAccountDetail, HugeKeyValue) {
   const std::string kHugeKey = std::string(10000, 'a');
   const std::string kHugeValue = std::string(10000, 'b');
   IntegrationTestFramework(1)
-      .setInitialState(kAdminKeypair)
+      .setInitialState(kAdminSigner)
       .sendTx(makeUserWithPerms())
       .skipProposal()
       .skipBlock()

@@ -14,6 +14,7 @@
 #include "module/shared_model/mock_objects_factories/mock_command_factory.hpp"
 #include "module/shared_model/mock_objects_factories/mock_query_factory.hpp"
 
+using namespace std::literals;
 using namespace common_constants;
 using namespace executor_testing;
 using namespace framework::expected;
@@ -21,14 +22,14 @@ using namespace framework::expected;
 using shared_model::interface::permissions::Grantable;
 using shared_model::interface::permissions::Role;
 
-static const shared_model::crypto::PublicKey kTargetSignatory{
-    "target_signatory"};
+static const shared_model::interface::types::PublicKeyHexStringView
+    kTargetSignatory{"target_signatory"sv};
 
 class RemoveSignatoryTest : public ExecutorTestBase {
  public:
   void addTargetUser(const shared_model::interface::RolePermissionSet &perms) {
     IROHA_ASSERT_RESULT_VALUE(getItf().createUserWithPerms(
-        kUser, kDomain, kUserKeypair.publicKey(), perms));
+        kUser, kDomain, kUserSigner->publicKey(), perms));
   }
 
   void addSignatory() {
@@ -48,7 +49,8 @@ class RemoveSignatoryTest : public ExecutorTestBase {
   }
 
  protected:
-  const shared_model::crypto::PublicKey &old_sig_{kUserKeypair.publicKey()};
+  shared_model::interface::types::PublicKeyHexStringView old_sig_{
+      kUserSigner->publicKey()};
 };
 
 using RemoveSignatoryBasicTest = BasicExecutorTest<RemoveSignatoryTest>;
@@ -62,7 +64,7 @@ TEST_P(RemoveSignatoryBasicTest, NonExistentUser) {
   IROHA_ASSERT_RESULT_VALUE(
       getItf().createUserWithPerms(kSecondUser,
                                    kDomain,
-                                   kSameDomainUserKeypair.publicKey(),
+                                   kSameDomainUserSigner->publicKey(),
                                    {Role::kRemoveSignatory}));
 
   checkCommandError(issueRemoveSignatoryBy(kSameDomainUserId), 3);

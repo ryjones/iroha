@@ -6,8 +6,9 @@
 #include <gtest/gtest.h>
 #include "backend/protobuf/transaction.hpp"
 #include "builders/protobuf/transaction.hpp"
-#include "cryptography/crypto_provider/crypto_defaults.hpp"
 #include "cryptography/crypto_provider/crypto_signer.hpp"
+#include "module/shared_model/cryptography/crypto_defaults.hpp"
+#include "module/shared_model/cryptography/make_default_crypto_signer.hpp"
 
 // common data for tests
 auto created_time = iroha::time::now();
@@ -59,15 +60,15 @@ TEST(ProtoTransaction, Builder) {
 
   command->CopyFrom(generateAddAssetQuantity(asset_id));
 
-  auto keypair =
-      shared_model::crypto::DefaultCryptoAlgorithmType::generateKeypair();
-  auto signedProto = shared_model::crypto::CryptoSigner<>::sign(
-      shared_model::crypto::Blob(proto_tx.payload().SerializeAsString()),
-      keypair);
+  using namespace shared_model::crypto;
+  auto signer = makeDefaultSigner();
+  auto signature_hex =
+      signer->sign(Blob{proto_tx.payload().SerializeAsString()});
+  std::string_view public_key = signer->publicKey();
 
   auto sig = proto_tx.add_signatures();
-  sig->set_public_key(keypair.publicKey().hex());
-  sig->set_signature(signedProto.hex());
+  sig->set_public_key(public_key.data(), public_key.size());
+  sig->set_signature(signature_hex);
 
   auto tx = shared_model::proto::TransactionBuilder()
                 .creatorAccountId(creator_account_id)
@@ -76,7 +77,7 @@ TEST(ProtoTransaction, Builder) {
                 .quorum(1)
                 .build();
 
-  auto signedTx = tx.signAndAddSignature(keypair).finish();
+  auto signedTx = tx.signAndAddSignature(*signer).finish();
   auto &proto = signedTx.getTransport();
 
   ASSERT_EQ(proto_tx.SerializeAsString(), proto.SerializeAsString());

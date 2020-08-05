@@ -15,6 +15,7 @@
 #include "module/irohad/common/validators_config.hpp"
 #include "module/shared_model/builders/protobuf/test_transaction_builder.hpp"
 #include "module/shared_model/cryptography/crypto_defaults.hpp"
+#include "module/shared_model/cryptography/make_default_crypto_signer.hpp"
 #include "module/shared_model/interface_mocks.hpp"
 #include "validators/default_validator.hpp"
 
@@ -121,9 +122,7 @@ namespace framework {
                             .batchMeta(btype_creator.first, reduced_hashes)
                             .build()
                             .signAndAddSignature(
-                                shared_model::crypto::
-                                    DefaultCryptoAlgorithmType::
-                                        generateKeypair())
+                                *shared_model::crypto::makeDefaultSigner())
                             .finish());
                   });
       return txs;
@@ -220,7 +219,7 @@ namespace framework {
 
       auto batch_validator =
           std::make_shared<shared_model::validation::DefaultBatchValidator>(
-              iroha::test::kTestsValidatorsConfig);
+              iroha::test::getTestsValidatorsConfig());
       std::shared_ptr<shared_model::interface::TransactionBatchFactory>
           batch_factory = std::make_shared<
               shared_model::interface::TransactionBatchFactoryImpl>(
@@ -241,7 +240,7 @@ namespace framework {
         std::shared_ptr<shared_model::interface::Transaction> tx) {
       auto batch_validator =
           std::make_shared<shared_model::validation::DefaultBatchValidator>(
-              iroha::test::kTestsValidatorsConfig);
+              iroha::test::getTestsValidatorsConfig());
       auto batch_factory = std::make_shared<
           shared_model::interface::TransactionBatchFactoryImpl>(
           batch_validator);

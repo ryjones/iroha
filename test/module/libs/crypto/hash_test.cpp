@@ -16,10 +16,8 @@ using iroha::sha3_512;
 TEST(Hash, sha3_256_empty_text) {
   std::string res =
       "a7ffc6f8bf1ed76651c14756a061d662f580ff4de43b49fa82d80a4b80f8434a";
-  std::string str_("");
-  std::vector<uint8_t> str(str_.begin(), str_.end());
-  ASSERT_STREQ(sha3_256(str.data(), str.size()).to_hexstring().c_str(),
-               res.c_str());
+  std::string str("");
+  ASSERT_STREQ(sha3_256(str).to_hexstring().c_str(), res.c_str());
 }
 
 TEST(Hash, sha3_512_empty_text) {
@@ -35,19 +33,15 @@ TEST(Hash, sha3_512_empty_text) {
 TEST(Hash, sha3_256_ASCII_text) {
   std::string res =
       "cb7c96616a2466df29a1edc2979ef5080945f92d1907c08a55b502eba063d638";
-  std::string str_("Is the Order a distributed ledger?");
-  std::vector<uint8_t> str(str_.begin(), str_.end());
-  ASSERT_STREQ(sha3_256(str.data(), str.size()).to_hexstring().c_str(),
-               res.c_str());
+  std::string str("Is the Order a distributed ledger?");
+  ASSERT_STREQ(sha3_256(str).to_hexstring().c_str(), res.c_str());
 }
 
 TEST(Hash, sha3_256_JP_text) {
   std::string res =
       "3cd375d2948fd4e03e83c104fb5abe47a9ce79f770fe72d1a79c9e9b1b0621f1";
-  std::string str_("ご注文は分散台帳ですか？");
-  std::vector<uint8_t> str(str_.begin(), str_.end());
-  ASSERT_STREQ(sha3_256(str.data(), str.size()).to_hexstring().c_str(),
-               res.c_str());
+  std::string str("ご注文は分散台帳ですか？");
+  ASSERT_STREQ(sha3_256(str).to_hexstring().c_str(), res.c_str());
 }
 
 TEST(Hash, sha3_512_ASCII_text) {
@@ -73,11 +67,9 @@ TEST(Hash, sha3_512_JP_text) {
 TEST(Hash, sha3_256_JP_text_LOOP) {
   std::string res =
       "3cd375d2948fd4e03e83c104fb5abe47a9ce79f770fe72d1a79c9e9b1b0621f1";
-  std::string str_("ご注文は分散台帳ですか？");
-  std::vector<uint8_t> str(str_.begin(), str_.end());
+  std::string str("ご注文は分散台帳ですか？");
   for (int i = 0; i < LOOP_N; i++) {
-    EXPECT_STREQ(sha3_256(str.data(), str.size()).to_hexstring().c_str(),
-                 res.c_str());
+    EXPECT_STREQ(sha3_256(str).to_hexstring().c_str(), res.c_str());
   }
 }
 
@@ -97,11 +89,9 @@ TEST(Hash, sha3_512_JP_text_LOOP) {
 TEST(Hash, sha3_256_RU_text) {
   std::string res =
       "cf5987add8080bbf2e70e45d913acc1d4fc919ff4634428a71dabb3e0777a1a7";
-  std::string str_(
+  std::string str(
       "Является ли Order распределённой программой финансового учёта?");
-  std::vector<uint8_t> str(str_.begin(), str_.end());
-  ASSERT_STREQ(sha3_256(str.data(), str.size()).to_hexstring().c_str(),
-               res.c_str());
+  ASSERT_STREQ(sha3_256(str).to_hexstring().c_str(), res.c_str());
 }
 
 TEST(Hash, sha3_512_RU_text) {
@@ -118,12 +108,10 @@ TEST(Hash, sha3_512_RU_text) {
 TEST(Hash, sha3_256_RU_text_LOOP) {
   std::string res =
       "cf5987add8080bbf2e70e45d913acc1d4fc919ff4634428a71dabb3e0777a1a7";
-  std::string str_(
+  std::string str(
       "Является ли Order распределённой программой финансового учёта?");
-  std::vector<uint8_t> str(str_.begin(), str_.end());
   for (int i = 0; i < LOOP_N; i++) {
-    EXPECT_STREQ(sha3_256(str.data(), str.size()).to_hexstring().c_str(),
-                 res.c_str());
+    EXPECT_STREQ(sha3_256(str).to_hexstring().c_str(), res.c_str());
   }
 }
 

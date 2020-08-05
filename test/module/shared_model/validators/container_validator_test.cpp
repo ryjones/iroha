@@ -11,6 +11,7 @@
 #include "module/shared_model/builders/protobuf/test_proposal_builder.hpp"
 #include "module/shared_model/builders/protobuf/test_transaction_builder.hpp"
 #include "module/shared_model/cryptography/crypto_defaults.hpp"
+#include "module/shared_model/cryptography/make_default_crypto_signer.hpp"
 #include "validators/default_validator.hpp"
 #include "validators/validation_error_output.hpp"
 
@@ -29,7 +30,7 @@ struct ContainerValidatorTest : public ::testing::Test {
         .createDomain("domain", "role")
         .quorum(1)
         .build()
-        .signAndAddSignature(keypair)
+        .signAndAddSignature(*signer_)
         .finish();
   }
 
@@ -55,12 +56,12 @@ struct ContainerValidatorTest : public ::testing::Test {
             shared_model::crypto::Blob("")))
         .createdTime(timestamp)
         .build()
-        .signAndAddSignature(keypair)
+        .signAndAddSignature(*signer_)
         .finish();
   }
 
-  shared_model::crypto::Keypair keypair =
-      shared_model::crypto::DefaultCryptoAlgorithmType::generateKeypair();
+  const std::shared_ptr<shared_model::crypto::CryptoSigner> signer_ =
+      shared_model::crypto::makeDefaultSigner();
   shared_model::interface::types::TimestampType old_timestamp =
       iroha::time::now(std::chrono::hours(-100));
   shared_model::interface::types::TimestampType current_timestamp;
@@ -73,7 +74,7 @@ struct ContainerValidatorTest : public ::testing::Test {
  */
 TEST_F(ContainerValidatorTest, OldProposal) {
   shared_model::validation::DefaultProposalValidator validator(
-      iroha::test::kTestsValidatorsConfig);
+      iroha::test::getTestsValidatorsConfig());
   auto proposal = makeProposal(old_timestamp, makeTransaction(old_timestamp));
 
   ASSERT_EQ(validator.validate(proposal), std::nullopt);
@@ -86,7 +87,7 @@ TEST_F(ContainerValidatorTest, OldProposal) {
  */
 TEST_F(ContainerValidatorTest, OldBlock) {
   shared_model::validation::DefaultSignedBlockValidator validator(
-      iroha::test::kTestsValidatorsConfig);
+      iroha::test::getTestsValidatorsConfig());
   auto block = makeBlock(old_timestamp, makeTransaction(old_timestamp));
 
   ASSERT_EQ(validator.validate(block), std::nullopt);
@@ -99,7 +100,7 @@ TEST_F(ContainerValidatorTest, OldBlock) {
  */
 TEST_F(ContainerValidatorTest, OldProposalNewTransaction) {
   shared_model::validation::DefaultProposalValidator validator(
-      iroha::test::kTestsValidatorsConfig);
+      iroha::test::getTestsValidatorsConfig());
   auto proposal =
       makeProposal(old_timestamp, makeTransaction(current_timestamp));
 
@@ -116,7 +117,7 @@ TEST_F(ContainerValidatorTest, OldProposalNewTransaction) {
  */
 TEST_F(ContainerValidatorTest, OldBlockNewTransaction) {
   shared_model::validation::DefaultSignedBlockValidator validator(
-      iroha::test::kTestsValidatorsConfig);
+      iroha::test::getTestsValidatorsConfig());
   auto block = makeBlock(old_timestamp, makeTransaction(current_timestamp));
 
   auto error = validator.validate(block);

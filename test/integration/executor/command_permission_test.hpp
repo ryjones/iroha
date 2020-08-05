@@ -6,6 +6,7 @@
 #ifndef EXECUTOR_COMMAND_PERMISSION_TEST_HPP
 #define EXECUTOR_COMMAND_PERMISSION_TEST_HPP
 
+#include "cryptography/crypto_provider/crypto_signer.hpp"
 #include "framework/common_constants.hpp"
 #include "framework/executor_itf/executor_itf.hpp"
 #include "framework/result_gtest_checkers.hpp"
@@ -87,7 +88,7 @@ namespace executor_testing {
         IROHA_ASSERT_RESULT_VALUE(getItf().createUserWithPerms(
             kUser,
             kDomain,
-            PublicKeyHexStringView{kUserKeypair.publicKey()},
+            PublicKeyHexStringView{kUserSigner->publicKey()},
             target_permissions));
 
         if (getActor() != kUserId) {
@@ -97,7 +98,7 @@ namespace executor_testing {
           IROHA_ASSERT_RESULT_VALUE(getItf().createUserWithPerms(
               split_actor_id.first,
               split_actor_id.second,
-              PublicKeyHexStringView{kSameDomainUserKeypair.publicKey()},
+              PublicKeyHexStringView{kSameDomainUserSigner->publicKey()},
               actor_permissions));
         }
 

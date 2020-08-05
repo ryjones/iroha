@@ -13,9 +13,9 @@
 #include "framework/batch_helper.hpp"
 #include "framework/integration_framework/integration_test_framework.hpp"
 #include "integration/acceptance/acceptance_fixture.hpp"
-#include "interfaces/iroha_internal/transaction_sequence_factory.hpp"
 #include "module/irohad/common/validators_config.hpp"
 #include "module/shared_model/cryptography/crypto_defaults.hpp"
+#include "module/shared_model/interface/transaction_sequence_factory.hpp"
 #include "utils/query_error_response_visitor.hpp"
 
 using namespace common_constants;
@@ -35,7 +35,7 @@ class PipelineIntegrationTest : public AcceptanceFixture {
         .creatorAccountId(kAdminId)
         .createDomain(domain_name, kDefaultRole)
         .build()
-        .signAndAddSignature(kAdminKeypair)
+        .signAndAddSignature(*kAdminSigner)
         .finish();
   }
 
@@ -58,9 +58,9 @@ class PipelineIntegrationTest : public AcceptanceFixture {
         TransactionSequenceFactory::createTransactionSequence(
             txs,
             shared_model::validation::DefaultSignedTransactionsValidator(
-                iroha::test::kTestsValidatorsConfig),
+                iroha::test::getTestsValidatorsConfig()),
             shared_model::validation::FieldValidator(
-                iroha::test::kTestsValidatorsConfig));
+                iroha::test::getTestsValidatorsConfig()));
 
     return framework::expected::val(tx_sequence_result).value().value;
   }
@@ -80,8 +80,7 @@ TEST_F(PipelineIntegrationTest, SendQuery) {
                    .build()
                    .signAndAddSignature(
                        // TODO: 30/03/17 @l4l use keygen adapter IR-1189
-                       shared_model::crypto::DefaultCryptoAlgorithmType::
-                           generateKeypair())
+                       *kUserSigner)
                    .finish();
 
   auto check = [](auto &status) {
@@ -91,7 +90,7 @@ TEST_F(PipelineIntegrationTest, SendQuery) {
         status.get()));
   };
   integration_framework::IntegrationTestFramework(1)
-      .setInitialState(kAdminKeypair)
+      .setInitialState(kAdminSigner)
       .sendQuery(query, check);
 }
 
@@ -122,7 +121,7 @@ TEST_F(PipelineIntegrationTest, SendTx) {
   };
 
   integration_framework::IntegrationTestFramework(1)
-      .setInitialState(kAdminKeypair)
+      .setInitialState(kAdminSigner)
       .sendTx(tx, check_stateless_valid_status)
       .checkProposal(check_proposal)
       .checkVerifiedProposal(check_verified_proposal)
@@ -160,7 +159,7 @@ TEST_F(PipelineIntegrationTest, DISABLED_SendTxSequence) {
 
   integration_framework::IntegrationTestFramework(
       tx_size)  // make all transactions to fit into a single proposal
-      .setInitialState(kAdminKeypair)
+      .setInitialState(kAdminSigner)
       .sendTxSequence(tx_sequence, check_stateless_valid)
       .checkProposal(check_proposal)
       .checkVerifiedProposal(check_verified_proposal)
@@ -183,7 +182,7 @@ TEST_F(PipelineIntegrationTest, DISABLED_SendTxSequenceAwait) {
   };
   integration_framework::IntegrationTestFramework(
       tx_size)  // make all transactions to fit into a single proposal
-      .setInitialState(kAdminKeypair)
+      .setInitialState(kAdminSigner)
       .sendTxSequenceAwait(tx_sequence, check_block);
 }
 
@@ -205,7 +204,7 @@ TEST_F(PipelineIntegrationTest, SuccessfulCommitAfterEmptyBlock) {
   };
 
   integration_framework::IntegrationTestFramework(1)
-      .setInitialState(kAdminKeypair)
+      .setInitialState(kAdminSigner)
       .sendTxAwait(
           createFirstDomain(),
           [](const auto &block) { ASSERT_EQ(block->transactions().size(), 1); })

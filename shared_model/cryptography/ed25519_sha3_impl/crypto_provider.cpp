@@ -22,7 +22,8 @@ namespace shared_model {
     bool CryptoProviderEd25519Sha3::verify(SignatureByteRangeView signature,
                                            const Blob &orig,
                                            PublicKeyByteRangeView public_key) {
-      return Verifier::verify(signature, orig, public_key);
+      return ed25519_sha3::Verifier::verifyEd25519Sha3(
+          signature, orig.range(), public_key);
     }
 
     Seed CryptoProviderEd25519Sha3::generateSeed() {
@@ -51,5 +52,7 @@ namespace shared_model {
     constexpr size_t CryptoProviderEd25519Sha3::kPrivateKeyLength;
     constexpr size_t CryptoProviderEd25519Sha3::kSignatureLength;
     constexpr size_t CryptoProviderEd25519Sha3::kSeedLength;
+
+    const char *CryptoProviderEd25519Sha3::kName = "Internal Ed25519 with SHA3";
   }  // namespace crypto
 }  // namespace shared_model

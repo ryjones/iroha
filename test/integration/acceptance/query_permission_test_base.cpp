@@ -32,16 +32,16 @@ IntegrationTestFramework &QueryPermissionTestBase::prepareState(
                   .createAccount(kSecondUser,
                                  kDomain,
                                  PublicKeyHexStringView{
-                                     kSameDomainUserKeypair.publicKey()})
+                                     kSameDomainUserSigner->publicKey()})
                   .createAccount(kSecondUser,
                                  kSecondDomain,
                                  PublicKeyHexStringView{
-                                     kSecondDomainUserKeypair.publicKey()})
+                                     kSecondDomainUserSigner->publicKey()})
                   // Assign the close spectator the spectator role. Remote
                   // spectator gets this role by default (from domain)
                   .appendRole(kSameDomainUserId, kSecondUser)
                   .detachRole(kSameDomainUserId, kDefaultRole),
-              kAdminKeypair),
+              *kAdminSigner),
           getBlockTransactionsAmountChecker(1));
 }
 

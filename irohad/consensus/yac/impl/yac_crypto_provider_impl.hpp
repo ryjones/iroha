@@ -8,6 +8,7 @@
 
 #include "consensus/yac/yac_crypto_provider.hpp"
 
+#include "cryptography/crypto_provider/crypto_provider.hpp"
 #include "cryptography/keypair.hpp"
 #include "logger/logger_fwd.hpp"
 
@@ -16,7 +17,7 @@ namespace iroha {
     namespace yac {
       class CryptoProviderImpl : public YacCryptoProvider {
        public:
-        CryptoProviderImpl(const shared_model::crypto::Keypair &keypair,
+        CryptoProviderImpl(shared_model::crypto::CryptoProvider crypto_provider,
                            logger::LoggerPtr log);
 
         // TODO 18.04.2020 IR-710 @mboldyrev: make it return Result
@@ -25,7 +26,7 @@ namespace iroha {
         VoteMessage getVote(YacHash hash) override;
 
        private:
-        shared_model::crypto::Keypair keypair_;
+        shared_model::crypto::CryptoProvider crypto_provider_;
         logger::LoggerPtr log_;
       };
     }  // namespace yac

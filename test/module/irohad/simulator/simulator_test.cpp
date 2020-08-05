@@ -5,6 +5,7 @@
 
 #include "simulator/impl/simulator.hpp"
 
+#include <chrono>
 #include <vector>
 
 #include <boost/range/adaptor/transformed.hpp>
@@ -13,6 +14,7 @@
 #include "backend/protobuf/transaction.hpp"
 #include "builders/protobuf/transaction.hpp"
 #include "datetime/time.hpp"
+#include "framework/common_constants.hpp"
 #include "framework/crypto_literals.hpp"
 #include "framework/test_logger.hpp"
 #include "framework/test_subscriber.hpp"
@@ -24,16 +26,18 @@
 #include "module/shared_model/builders/protobuf/test_block_builder.hpp"
 #include "module/shared_model/builders/protobuf/test_proposal_builder.hpp"
 #include "module/shared_model/cryptography/crypto_defaults.hpp"
-#include "module/shared_model/cryptography/mock_abstract_crypto_model_signer.hpp"
+#include "module/shared_model/cryptography/mock_crypto_signer.hpp"
 #include "module/shared_model/interface_mocks.hpp"
 #include "module/shared_model/validators/validators.hpp"
 
+using namespace common_constants;
 using namespace iroha;
 using namespace iroha::validation;
 using namespace iroha::ametsuchi;
 using namespace iroha::simulator;
 using namespace iroha::network;
 using namespace framework::test_subscriber;
+using namespace std::chrono_literals;
 
 using ::testing::_;
 using ::testing::A;
@@ -47,15 +51,12 @@ using wBlock = std::shared_ptr<shared_model::interface::Block>;
 
 class SimulatorTest : public ::testing::Test {
  public:
-  using CryptoSignerType = shared_model::crypto::MockAbstractCryptoModelSigner<
-      shared_model::interface::Block>;
-
   void SetUp() override {
     auto command_executor = std::make_unique<MockCommandExecutor>();
     validator = std::make_shared<MockStatefulValidator>();
     factory = std::make_shared<NiceMock<MockTemporaryFactory>>();
     ordering_gate = std::make_shared<MockOrderingGate>();
-    crypto_signer = std::make_shared<CryptoSignerType>();
+    crypto_signer = std::make_shared<shared_model::crypto::MockCryptoSigner>();
     block_factory = std::make_unique<shared_model::proto::ProtoBlockFactory>(
         std::make_unique<shared_model::validation::MockValidator<
             shared_model::interface::Block>>(),
@@ -77,7 +78,7 @@ class SimulatorTest : public ::testing::Test {
   std::shared_ptr<MockStatefulValidator> validator;
   std::shared_ptr<MockTemporaryFactory> factory;
   std::shared_ptr<MockOrderingGate> ordering_gate;
-  std::shared_ptr<CryptoSignerType> crypto_signer;
+  std::shared_ptr<shared_model::crypto::MockCryptoSigner> crypto_signer;
   std::unique_ptr<shared_model::interface::UnsafeBlockFactory> block_factory;
   rxcpp::subjects::subject<OrderingEvent> ordering_events;
 
@@ -89,13 +90,11 @@ class SimulatorTest : public ::testing::Test {
 auto makeProposal(int height) {
   auto tx = shared_model::proto::TransactionBuilder()
                 .createdTime(iroha::time::now())
-                .creatorAccountId("admin@ru")
-                .addAssetQuantity("coin#coin", "1.0")
+                .creatorAccountId(kAdminId)
+                .addAssetQuantity(kAssetId, "1.0")
                 .quorum(1)
                 .build()
-                .signAndAddSignature(
-                    shared_model::crypto::DefaultCryptoAlgorithmType::
-                        generateKeypair())
+                .signAndAddSignature(*kAdminSigner)
                 .finish();
   std::vector<shared_model::proto::Transaction> txs = {tx, tx};
   auto proposal = shared_model::proto::ProposalBuilder()
@@ -108,23 +107,21 @@ auto makeProposal(int height) {
           std::move(proposal)));
 }
 
-auto makeTx(size_t created_time = iroha::time::now()) {
+auto makeTx(std::chrono::milliseconds time_offset = 0ms) {
   return shared_model::proto::TransactionBuilder()
-      .createdTime(created_time)
-      .creatorAccountId("admin@ru")
-      .addAssetQuantity("coin#coin", "1.0")
+      .createdTime(iroha::time::now(time_offset))
+      .creatorAccountId(kAdminId)
+      .addAssetQuantity(kAssetId, "1.0")
       .quorum(1)
       .build()
-      .signAndAddSignature(
-          shared_model::crypto::DefaultCryptoAlgorithmType::generateKeypair())
+      .signAndAddSignature(*kAdminSigner)
       .finish();
 }
 
 TEST_F(SimulatorTest, ValidWhenPreviousBlock) {
   // proposal with height 2 => height 1 block present => new block generated
-  auto const now = iroha::time::now();
-  std::vector<shared_model::proto::Transaction> txs = {makeTx(now),
-                                                       makeTx(now + 1ull)};
+  std::vector<shared_model::proto::Transaction> txs = {makeTx(0ms),
+                                                       makeTx(1ms)};
 
   auto validation_result =
       std::make_unique<iroha::validation::VerifiedProposalAndErrors>();
@@ -144,8 +141,7 @@ TEST_F(SimulatorTest, ValidWhenPreviousBlock) {
         return std::move(validation_result);
       }));
 
-  EXPECT_CALL(*crypto_signer, sign(A<shared_model::interface::Block &>()))
-      .Times(1);
+  EXPECT_CALL(*crypto_signer, sign(_)).Times(1);
 
   auto ledger_state = std::make_shared<LedgerState>(
       ledger_peers, proposal->height() - 1, shared_model::crypto::Hash{"hash"});
@@ -193,9 +189,8 @@ TEST_F(SimulatorTest, SomeFailingTxs) {
   // verified proposal
   const int kNumTransactions = 3;
   std::vector<shared_model::proto::Transaction> txs;
-  uint64_t created_time = iroha::time::now();
   for (int i = 0; i < kNumTransactions; ++i) {
-    txs.push_back(makeTx(created_time + i));
+    txs.push_back(makeTx(std::chrono::milliseconds{i}));
   }
   auto proposal = std::make_shared<shared_model::proto::Proposal>(
       shared_model::proto::ProposalBuilder()

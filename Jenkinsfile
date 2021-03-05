@@ -346,7 +346,7 @@ node ('master') {
                            x64LinuxAlwaysPostSteps, "x86_64 Linux ${build_type} ${compiler}", x64LinuxWorker, tasks)
       }
     }
-    // If "main" also run Release build
+    // If "main" branch also run Release build
     if (release_build){
       registerBuildSteps([{x64LinuxBuildScript.buildSteps(
                          current_parallelism, first_compiler, 'Release', build_shared_libs, specialBranch, /*coverage*/false,

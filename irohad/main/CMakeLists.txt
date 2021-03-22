@@ -77,6 +77,7 @@ target_link_libraries(application
     common
     pg_connection_init
     generator
+    profiler
     )
 
 add_executable(irohad irohad.cpp)
@@ -109,5 +110,9 @@ add_library(iroha_conf_literals iroha_conf_literals.cpp)
 target_link_libraries(iroha_conf_literals
     logger
     )
+
+if (ENABLE_PROFILER)
+    add_compile_definitions(ENABLE_PROFILER)
+endif(ENABLE_PROFILER)
 
 add_install_step_for_bin(irohad)

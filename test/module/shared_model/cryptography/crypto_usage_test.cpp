@@ -12,16 +12,18 @@
 #include <gmock/gmock-matchers.h>
 #include <gtest/gtest.h>
 
-#include "cryptography/crypto_provider/crypto_model_signer.hpp"
+#include "cryptography/crypto_provider/crypto_signer_internal.hpp"
 #include "cryptography/crypto_provider/crypto_verifier.hpp"
 #include "cryptography/ed25519_sha3_impl/crypto_provider.hpp"
 #include "framework/crypto_literals.hpp"
 #include "framework/result_gtest_checkers.hpp"
+#include "framework/test_crypto_verifier.hpp"
 #include "module/irohad/common/validators_config.hpp"
 #include "module/shared_model/builders/protobuf/test_block_builder.hpp"
 #include "module/shared_model/builders/protobuf/test_query_builder.hpp"
 #include "module/shared_model/builders/protobuf/test_transaction_builder.hpp"
 #include "module/shared_model/cryptography/crypto_defaults.hpp"
+#include "module/shared_model/cryptography/make_default_crypto_signer.hpp"
 #include "multihash/multihash.hpp"
 #include "multihash/type.hpp"
 #include "validators/field_validator.hpp"
@@ -30,7 +32,9 @@
 #include "cryptography/ed25519_ursa_impl/crypto_provider.hpp"
 #endif
 
+using namespace common_constants;
 using namespace shared_model::crypto;
+using namespace shared_model::interface::types;
 
 using shared_model::validation::ValidationError;
 
@@ -73,11 +77,10 @@ class CryptoUsageTest : public ::testing::Test {
   template <typename T>
   void signIncorrect(T &signable) {
     // initialize wrong signature
-    auto signedBlob = CurrentCryptoProvider::sign(
-        shared_model::crypto::Blob("wrong payload"), keypair);
-    using namespace shared_model::interface::types;
-    signable.addSignature(SignedHexStringView{signedBlob},
-                          PublicKeyHexStringView{keypair.publicKey()});
+    auto signature_hex =
+        signer_->sign(shared_model::crypto::Blob{"wrong payload"});
+    signable.addSignature(SignedHexStringView{signature_hex},
+                          PublicKeyHexStringView{signer_->publicKey()});
   }
 
   template <typename T>
@@ -87,14 +90,18 @@ class CryptoUsageTest : public ::testing::Test {
   }
 
   Blob data;
-  shared_model::crypto::Keypair keypair =
-      CurrentCryptoProvider::generateKeypair();
+  std::shared_ptr<shared_model::crypto::CryptoSigner> signer_ =
+      std::make_shared<CryptoSignerInternal<CurrentCryptoProvider>>(
+          CurrentCryptoProvider::generateKeypair());
 
-  shared_model::crypto::CryptoModelSigner<CurrentCryptoProvider> signer =
-      shared_model::crypto::CryptoModelSigner<CurrentCryptoProvider>(keypair);
+  template <typename T>
+  void sign(T &o) {
+    o.addSignature(SignedHexStringView{signer_->sign(o.payload())},
+                   signer_->publicKey());
+  }
 
   shared_model::validation::FieldValidator field_validator_{
-      iroha::test::kTestsValidatorsConfig};
+      iroha::test::getTestsValidatorsConfig()};
 
   std::unique_ptr<shared_model::proto::Block> block;
   std::unique_ptr<shared_model::proto::Query> query;
@@ -115,14 +122,12 @@ TYPED_TEST_CASE(CryptoUsageTest, CryptoUsageTestTypes, );
  * @then check that siganture valid without clarification of algorithm
  */
 TYPED_TEST(CryptoUsageTest, RawSignAndVerifyTest) {
-  auto signature = iroha::hexstringToBytestringResult(
-                       CryptoSigner::sign(this->data, this->keypair))
-                       .assumeValue();
+  auto signature_hex = this->signer_->sign(this->data);
   using namespace shared_model::interface::types;
-  auto verified = CryptoVerifier::verify(
-      SignedHexStringView{iroha::bytestringToHexstring(signature)},
+  auto verified = iroha::test::getTestCryptoVerifier()->verify(
+      SignedHexStringView{signature_hex},
       this->data,
-      PublicKeyHexStringView{this->keypair.publicKey()});
+      PublicKeyHexStringView{this->signer_->publicKey()});
   IROHA_ASSERT_RESULT_VALUE(verified);
 }
 
@@ -141,7 +146,7 @@ TYPED_TEST(CryptoUsageTest, UnsignedBlock) {
  * @then block is verified
  */
 TYPED_TEST(CryptoUsageTest, SignAndVerifyBlock) {
-  this->signer.sign(*this->block);
+  this->sign(*this->block);
 
   EXPECT_EQ(this->verify(*this->block), std::nullopt);
 }
@@ -172,7 +177,7 @@ TYPED_TEST(CryptoUsageTest, UnsignedQuery) {
  * @then query is verified
  */
 TYPED_TEST(CryptoUsageTest, SignAndVerifyQuery) {
-  this->signer.sign(*this->query);
+  this->sign(*this->query);
 
   EXPECT_EQ(this->verify(*this->query), std::nullopt);
 }
@@ -195,7 +200,7 @@ TYPED_TEST(CryptoUsageTest, SignAndVerifyQuerykWithWrongSignature) {
  */
 TYPED_TEST(CryptoUsageTest, SameQueryHashAfterSign) {
   auto hash_before = this->query->hash();
-  this->signer.sign(*this->query);
+  this->sign(*this->query);
   auto hash_signed = this->query->hash();
 
   ASSERT_EQ(hash_signed, hash_before);
@@ -216,7 +221,7 @@ TYPED_TEST(CryptoUsageTest, UnsignedTransaction) {
  * @then transaction is verified
  */
 TYPED_TEST(CryptoUsageTest, SignAndVerifyTransaction) {
-  this->signer.sign(*this->transaction);
+  this->sign(*this->transaction);
 
   EXPECT_EQ(this->verify(*this->transaction), std::nullopt);
 }
@@ -243,7 +248,7 @@ TEST(CryptoUsageTest, UnimplementedCryptoMultihashPubkey) {
       iroha::multihash::Type{123}, "blah"_byterange, hex_pubkey);
 
   using namespace shared_model::interface::types;
-  auto verified = CryptoVerifier::verify(
+  auto verified = iroha::test::getTestCryptoVerifier()->verify(
       "F000"_hex_sig, Blob{"moo"}, PublicKeyHexStringView{hex_pubkey});
   IROHA_ASSERT_RESULT_ERROR(verified);
   EXPECT_THAT(verified.assumeError(),

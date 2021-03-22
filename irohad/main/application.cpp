@@ -28,7 +28,7 @@
 #include "common/bind.hpp"
 #include "common/files.hpp"
 #include "consensus/yac/consistency_model.hpp"
-#include "cryptography/crypto_provider/crypto_model_signer.hpp"
+#include "cryptography/crypto_provider/crypto_signer.hpp"
 #include "cryptography/default_hash_provider.hpp"
 #include "generator/generator.hpp"
 #include "interfaces/common_objects/string_view_types.hpp"
@@ -111,7 +111,7 @@ Irohad::Irohad(
     std::chrono::milliseconds proposal_delay,
     std::chrono::milliseconds vote_delay,
     std::chrono::minutes mst_expiration_time,
-    const shared_model::crypto::Keypair &keypair,
+    shared_model::crypto::CryptoProvider crypto_provider,
     std::chrono::milliseconds max_rounds_delay,
     size_t stale_stream_max_rounds,
     boost::optional<shared_model::interface::types::PeerList>
@@ -139,10 +139,10 @@ Irohad::Irohad(
       inter_peer_tls_config_(std::move(inter_peer_tls_config)),
       pending_txs_storage_init(
           std::make_unique<PendingTransactionStorageInit>()),
-      keypair(keypair),
       pg_opt_(std::move(pg_opt)),
       ordering_init(logger_manager->getLogger()),
       yac_init(std::make_unique<iroha::consensus::yac::YacInit>()),
+      crypto_provider_(std::move(crypto_provider)),
       consensus_gate_objects(consensus_gate_objects_lifetime),
       log_manager_(std::move(logger_manager)),
       log_(log_manager_->getLogger()) {
@@ -187,7 +187,6 @@ Irohad::RunResult Irohad::init() {
   | [this]{ return validateKeypair();}
   | [this]{ return initTlsCredentials();}
   | [this]{ return initPeerCertProvider();}
-  | [this]{ return initCryptoProvider();}
   | [this]{ return initBatchParser();}
   | [this]{ return initValidators();}
   | [this]{ return initNetworkClient();}
@@ -244,13 +243,17 @@ Irohad::RunResult Irohad::initSettings() {
 Irohad::RunResult Irohad::initValidatorsConfigs() {
   validators_config_ =
       std::make_shared<shared_model::validation::ValidatorsConfig>(
-          max_proposal_size_, settings_);
+          max_proposal_size_, crypto_provider_.verifier, settings_);
   block_validators_config_ =
       std::make_shared<shared_model::validation::ValidatorsConfig>(
-          max_proposal_size_, settings_, true);
+          max_proposal_size_, crypto_provider_.verifier, settings_, true);
   proposal_validators_config_ =
       std::make_shared<shared_model::validation::ValidatorsConfig>(
-          max_proposal_size_, settings_, false, true);
+          max_proposal_size_,
+          crypto_provider_.verifier,
+          settings_,
+          false,
+          true);
   log_->info("[Init] => validators configs");
   return {};
 }
@@ -369,7 +372,7 @@ Irohad::RunResult Irohad::restoreWsv() {
 Irohad::RunResult Irohad::validateKeypair() {
   auto peers = storage->createPeerQuery() | [this](auto &&peer_query) {
     return peer_query->getLedgerPeerByPublicKey(
-        PublicKeyHexStringView{keypair.publicKey()});
+        crypto_provider_.signer->publicKey());
   };
   if (not peers) {
     log_->warn("There is no peer in the ledger with my public key!");
@@ -461,17 +464,6 @@ Irohad::RunResult Irohad::initPeerCertProvider() {
     this->peer_tls_certificates_provider_ = std::move(opt_peer_cert_provider);
     return {};
   };
-}
-
-/**
- * Initializing crypto provider
- */
-Irohad::RunResult Irohad::initCryptoProvider() {
-  crypto_signer_ =
-      std::make_shared<shared_model::crypto::CryptoModelSigner<>>(keypair);
-
-  log_->info("[Init] => crypto provider");
-  return {};
 }
 
 Irohad::RunResult Irohad::initBatchParser() {
@@ -714,7 +706,7 @@ Irohad::RunResult Irohad::initSimulator() {
         ordering_gate,
         stateful_validator,
         storage,
-        crypto_signer_,
+        crypto_provider_.signer,
         std::move(block_factory),
         log_manager_->getChild("Simulator")->getLogger());
 
@@ -772,7 +764,7 @@ Irohad::RunResult Irohad::initConsensusGate() {
       opt_alternative_peers_,
       simulator,
       block_loader,
-      keypair,
+      crypto_provider_,
       consensus_result_cache_,
       vote_delay_,
       async_call_,
@@ -866,7 +858,7 @@ Irohad::RunResult Irohad::initMstProcessor() {
         transaction_batch_factory_,
         persistent_cache,
         mst_completer,
-        PublicKeyHexStringView{keypair.publicKey()},
+        crypto_provider_.signer->publicKey(),
         std::move(mst_state_logger),
         mst_logger_manager->getChild("Transport")->getLogger());
     mst_propagation = std::make_shared<GossipPropagationStrategy>(

@@ -36,6 +36,7 @@ namespace shared_model {
           shared_model::interface::types::SignatureByteRangeView signature,
           const Blob &orig,
           shared_model::interface::types::PublicKeyByteRangeView public_key);
+
       /**
        * Generates new seed
        * @return Seed generated
@@ -62,6 +63,7 @@ namespace shared_model {
        */
       static Keypair generateKeypair(const Seed &seed);
 
+      static const char *kName;
       static constexpr size_t kHashLength = 256 / 8;
       static constexpr size_t kPublicKeyLength = 256 / 8;
       static constexpr size_t kPrivateKeyLength = 256 / 8;

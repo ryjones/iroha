@@ -53,8 +53,8 @@ class KeyManager : public ::testing::Test {
   const path pub_key_path = filepath + KeysManagerImpl::kPublicKeyExtension;
   const path pri_key_path = filepath + KeysManagerImpl::kPrivateKeyExtension;
 
-  Keypair keypair = CurrentCryptoProviderParam::generateKeypair();
-  std::string pubkey = keypair.publicKey();
+  Keypair keypair = DefaultCryptoAlgorithmType::generateKeypair();
+  std::string_view pubkey = keypair.publicKey();
   const std::string prikey = keypair.privateKey().hex();
 
   const logger::LoggerPtr kKeysManagerLogger = getTestLogger("KeysManager");

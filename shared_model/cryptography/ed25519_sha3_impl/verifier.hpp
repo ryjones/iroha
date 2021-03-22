@@ -6,23 +6,30 @@
 #ifndef IROHA_SHARED_MODEL_VERIFIER_HPP
 #define IROHA_SHARED_MODEL_VERIFIER_HPP
 
-#include "cryptography/blob.hpp"
-#include "interfaces/common_objects/string_view_types.hpp"
+#include "cryptography/crypto_provider/crypto_verifier_multihash.hpp"
 
-namespace shared_model {
-  namespace crypto {
-    /**
-     * Class for signature verification.
-     */
-    class Verifier {
-     public:
-      static bool verify(
-          shared_model::interface::types::SignatureByteRangeView signature,
-          const Blob &orig,
-          shared_model::interface::types::PublicKeyByteRangeView public_key);
-    };
+namespace shared_model::crypto::ed25519_sha3 {
+  /**
+   * Class for signature verification.
+   */
+  class Verifier : public shared_model::crypto::CryptoVerifierMultihash {
+   public:
+    ~Verifier() override;
 
-  }  // namespace crypto
-}  // namespace shared_model
+    iroha::expected::Result<void, std::string> verify(
+        iroha::multihash::Type type,
+        shared_model::interface::types::SignatureByteRangeView signature,
+        shared_model::interface::types::ByteRange source,
+        shared_model::interface::types::PublicKeyByteRangeView public_key)
+        const override;
+
+    static bool verifyEd25519Sha3(
+        shared_model::interface::types::SignatureByteRangeView signature,
+        shared_model::interface::types::ByteRange source,
+        shared_model::interface::types::PublicKeyByteRangeView public_key);
+
+    std::vector<iroha::multihash::Type> getSupportedTypes() const override;
+  };
+}  // namespace shared_model::crypto::ed25519_sha3
 
 #endif  // IROHA_SHARED_MODEL_VERIFIER_HPP

@@ -17,6 +17,7 @@
 #include "module/irohad/common/validators_config.hpp"
 #include "module/irohad/ordering/mock_proposal_creation_strategy.hpp"
 #include "module/shared_model/cryptography/crypto_defaults.hpp"
+#include "module/shared_model/cryptography/make_default_crypto_signer.hpp"
 #include "module/shared_model/interface_mocks.hpp"
 #include "module/shared_model/validators/validators.hpp"
 #include "ordering/impl/on_demand_common.hpp"
@@ -54,7 +55,7 @@ class OnDemandOsTest : public ::testing::Test {
     // TODO: nickaleks IR-1811 use mock factory
     auto factory = std::make_unique<
         shared_model::proto::ProtoProposalFactory<MockProposalValidator>>(
-        iroha::test::kTestsValidatorsConfig);
+        iroha::test::getTestsValidatorsConfig());
     auto tx_cache =
         std::make_unique<NiceMock<iroha::ametsuchi::MockTxPresenceCache>>();
     mock_cache = tx_cache.get();
@@ -106,8 +107,7 @@ class OnDemandOsTest : public ::testing::Test {
                           .quorum(1)
                           .build()
                           .signAndAddSignature(
-                              shared_model::crypto::DefaultCryptoAlgorithmType::
-                                  generateKeypair())
+                              *shared_model::crypto::makeDefaultSigner())
                           .finish())}));
     }
     return collection;

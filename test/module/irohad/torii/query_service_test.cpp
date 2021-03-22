@@ -4,10 +4,12 @@
  */
 
 #include "torii/query_service.hpp"
+
 #include "backend/protobuf/proto_query_response_factory.hpp"
 #include "backend/protobuf/proto_transport_factory.hpp"
 #include "backend/protobuf/query_responses/proto_query_response.hpp"
 #include "builders/protobuf/queries.hpp"
+#include "framework/common_constants.hpp"
 #include "framework/test_logger.hpp"
 #include "module/irohad/common/validators_config.hpp"
 #include "module/irohad/torii/processor/mock_query_processor.hpp"
@@ -15,6 +17,7 @@
 #include "utils/query_error_response_visitor.hpp"
 #include "validators/protobuf/proto_query_validator.hpp"
 
+using namespace common_constants;
 using namespace iroha;
 using namespace iroha::torii;
 
@@ -37,16 +40,14 @@ class QueryServiceTest : public ::testing::Test {
             .queryCounter(1)
             .getAccount("user@domain")
             .build()
-            .signAndAddSignature(
-                shared_model::crypto::DefaultCryptoAlgorithmType::
-                    generateKeypair())
+            .signAndAddSignature(*kUserSigner)
             .finish());
 
     std::unique_ptr<shared_model::validation::AbstractValidator<
         shared_model::interface::Query>>
         query_validator = std::make_unique<
             shared_model::validation::DefaultSignedQueryValidator>(
-            iroha::test::kTestsValidatorsConfig);
+            iroha::test::getTestsValidatorsConfig());
     std::unique_ptr<
         shared_model::validation::AbstractValidator<iroha::protocol::Query>>
         proto_query_validator =
@@ -58,7 +59,7 @@ class QueryServiceTest : public ::testing::Test {
 
     auto blocks_query_validator = std::make_unique<
         shared_model::validation::DefaultSignedBlocksQueryValidator>(
-        iroha::test::kTestsValidatorsConfig);
+        iroha::test::getTestsValidatorsConfig());
     auto proto_blocks_query_validator =
         std::make_unique<shared_model::validation::ProtoBlocksQueryValidator>();
 

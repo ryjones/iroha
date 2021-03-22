@@ -23,8 +23,9 @@
 #include "backend/protobuf/transaction.hpp"
 #include "backend/protobuf/transaction_responses/proto_tx_response.hpp"
 #include "builders/protobuf/transaction.hpp"
-#include "builders/protobuf/transaction_sequence_builder.hpp"
 #include "consensus/yac/transport/impl/network_impl.hpp"
+#include "cryptography/crypto_provider/crypto_signer.hpp"
+#include "cryptography/crypto_provider/crypto_signer_internal.hpp"
 #include "cryptography/default_hash_provider.hpp"
 #include "datetime/time.hpp"
 #include "endpoint.grpc.pb.h"
@@ -35,6 +36,7 @@
 #include "framework/integration_framework/port_guard.hpp"
 #include "framework/integration_framework/test_irohad.hpp"
 #include "framework/result_fixture.hpp"
+#include "framework/test_crypto_verifier.hpp"
 #include "framework/test_logger.hpp"
 #include "interfaces/iroha_internal/transaction_batch_factory_impl.hpp"
 #include "interfaces/iroha_internal/transaction_batch_parser_impl.hpp"
@@ -45,6 +47,8 @@
 #include "module/irohad/common/validators_config.hpp"
 #include "module/shared_model/builders/protobuf/block.hpp"
 #include "module/shared_model/builders/protobuf/proposal.hpp"
+#include "module/shared_model/builders/protobuf/transaction_sequence_builder.hpp"
+#include "module/shared_model/cryptography/make_default_crypto_signer.hpp"
 #include "module/shared_model/validators/always_valid_validators.hpp"
 #include "multi_sig_transactions/mst_processor.hpp"
 #include "multi_sig_transactions/transport/mst_transport_grpc.hpp"
@@ -98,7 +102,6 @@ namespace {
     ip.append(std::to_string(port));
     return ip;
   }
-
 }  // namespace
 
 namespace integration_framework {
@@ -180,7 +183,7 @@ namespace integration_framework {
         maximum_proposal_size_(maximum_proposal_size),
         common_objects_factory_(
             std::make_shared<AlwaysValidProtoCommonObjectsFactory>(
-                iroha::test::kTestsValidatorsConfig)),
+                iroha::test::getTestsValidatorsConfig())),
         transaction_factory_(std::make_shared<ProtoTransactionFactory>(
             std::make_unique<AlwaysValidInterfaceTransactionValidator>(),
             std::make_unique<AlwaysValidProtoTransactionValidator>())),
@@ -188,7 +191,7 @@ namespace integration_framework {
                       shared_model::interface::TransactionBatchParserImpl>()),
         batch_validator_(
             std::make_shared<shared_model::validation::DefaultBatchValidator>(
-                iroha::test::kTestsValidatorsConfig)),
+                iroha::test::getTestsValidatorsConfig())),
         transaction_batch_factory_(
             std::make_shared<
                 shared_model::interface::TransactionBatchFactoryImpl>(
@@ -220,6 +223,7 @@ namespace integration_framework {
               return iroha::network::createClient<
                   iroha::consensus::yac::proto::Yac>(peer.address());
             },
+            iroha::test::getTestCryptoVerifier(),
             log_manager_->getChild("ConsensusTransport")->getLogger())),
         cleanup_on_exit_(cleanup_on_exit) {}
 
@@ -238,13 +242,13 @@ namespace integration_framework {
   }
 
   std::shared_ptr<FakePeer> IntegrationTestFramework::addFakePeer(
-      const boost::optional<Keypair> &key) {
-    BOOST_ASSERT_MSG(this_peer_, "Need to set the ITF peer key first!");
+      std::optional<std::shared_ptr<CryptoSigner>> signer) {
+    BOOST_ASSERT_MSG(this_peer_, "Need to set the ITF peer first!");
     const auto port = port_guard_->getPort(kDefaultInternalPort);
     auto fake_peer = std::make_shared<FakePeer>(
         kLocalHost,
         port,
-        key,
+        makeDefaultSigner(std::move(signer)),
         this_peer_,
         common_objects_factory_,
         transaction_factory_,
@@ -258,7 +262,8 @@ namespace integration_framework {
     fake_peers_.emplace_back(fake_peer);
     log_->debug("Added a fake peer at {} with {}.",
                 fake_peer->getAddress(),
-                fake_peer->getKeypair().publicKey());
+                static_cast<std::string_view const &>(
+                    fake_peer->getSigner().publicKey()));
     return fake_peer;
   }
 
@@ -266,7 +271,7 @@ namespace integration_framework {
   IntegrationTestFramework::addFakePeers(size_t amount) {
     std::vector<std::shared_ptr<fake_peer::FakePeer>> fake_peers;
     std::generate_n(std::back_inserter(fake_peers), amount, [this] {
-      auto fake_peer = addFakePeer({});
+      auto fake_peer = addFakePeer(std::nullopt);
       fake_peer->setBehaviour(std::make_shared<fake_peer::HonestBehaviour>());
       return fake_peer;
     });
@@ -274,7 +279,7 @@ namespace integration_framework {
   }
 
   shared_model::proto::Block IntegrationTestFramework::defaultBlock(
-      const shared_model::crypto::Keypair &key) const {
+      std::shared_ptr<CryptoSigner> signer) const {
     shared_model::interface::RolePermissionSet all_perms{};
     for (size_t i = 0; i < all_perms.size(); ++i) {
       auto perm = static_cast<shared_model::interface::permissions::Role>(i);
@@ -284,12 +289,13 @@ namespace integration_framework {
         shared_model::proto::TransactionBuilder()
             .creatorAccountId(kAdminId)
             .createdTime(iroha::time::now())
-            .addPeer(getAddress(), PublicKeyHexStringView{key.publicKey()})
+            .addPeer(getAddress(), PublicKeyHexStringView{signer->publicKey()})
             .createRole(kAdminRole, all_perms)
             .createRole(kDefaultRole, {})
             .createDomain(kDomain, kDefaultRole)
-            .createAccount(
-                kAdminName, kDomain, PublicKeyHexStringView{key.publicKey()})
+            .createAccount(kAdminName,
+                           kDomain,
+                           PublicKeyHexStringView{signer->publicKey()})
             .detachRole(kAdminId, kDefaultRole)
             .appendRole(kAdminId, kAdminRole)
             .createAsset(kAssetName, kDomain, 1)
@@ -298,10 +304,10 @@ namespace integration_framework {
     for (const auto &fake_peer : fake_peers_) {
       genesis_tx_builder = genesis_tx_builder.addPeer(
           fake_peer->getAddress(),
-          PublicKeyHexStringView{fake_peer->getKeypair().publicKey()});
+          PublicKeyHexStringView{fake_peer->getSigner().publicKey()});
     };
     auto genesis_tx =
-        genesis_tx_builder.build().signAndAddSignature(key).finish();
+        genesis_tx_builder.build().signAndAddSignature(*signer).finish();
     auto genesis_block =
         shared_model::proto::BlockBuilder()
             .transactions(
@@ -310,14 +316,14 @@ namespace integration_framework {
             .prevHash(DefaultHashProvider::makeHash(Blob("")))
             .createdTime(iroha::time::now())
             .build()
-            .signAndAddSignature(key)
+            .signAndAddSignature(*signer)
             .finish();
     return genesis_block;
   }
 
   shared_model::proto::Block IntegrationTestFramework::defaultBlock() const {
-    BOOST_ASSERT_MSG(my_key_, "Need to set the ITF peer key first!");
-    return defaultBlock(*my_key_);
+    BOOST_ASSERT_MSG(signer_, "Need to set the ITF peer signer first!");
+    return defaultBlock(*signer_);
   }
 
   IntegrationTestFramework &IntegrationTestFramework::setGenesisBlock(
@@ -328,9 +334,9 @@ namespace integration_framework {
   }
 
   IntegrationTestFramework &IntegrationTestFramework::setInitialState(
-      const Keypair &keypair) {
-    initPipeline(keypair);
-    setGenesisBlock(defaultBlock(keypair));
+      std::shared_ptr<CryptoSigner> signer) {
+    initPipeline(signer);
+    setGenesisBlock(defaultBlock(signer));
     log_->info("added genesis block");
     subscribeQueuesAndRun();
     return *this;
@@ -345,8 +351,9 @@ namespace integration_framework {
   }
 
   IntegrationTestFramework &IntegrationTestFramework::setInitialState(
-      const Keypair &keypair, const shared_model::interface::Block &block) {
-    initPipeline(keypair);
+      std::shared_ptr<CryptoSigner> signer,
+      const shared_model::interface::Block &block) {
+    initPipeline(std::move(signer));
     setGenesisBlock(block);
     log_->info("added genesis block");
     subscribeQueuesAndRun();
@@ -354,24 +361,24 @@ namespace integration_framework {
   }
 
   IntegrationTestFramework &IntegrationTestFramework::recoverState(
-      const Keypair &keypair) {
-    initPipeline(keypair);
+      std::shared_ptr<CryptoSigner> signer) {
+    initPipeline(std::move(signer));
     iroha_instance_->init();
     subscribeQueuesAndRun();
     return *this;
   }
 
   void IntegrationTestFramework::initPipeline(
-      const shared_model::crypto::Keypair &keypair) {
+      std::shared_ptr<CryptoSigner> signer) {
     log_->info("init state");
-    my_key_ = keypair;
-    this_peer_ =
-        framework::expected::val(
-            common_objects_factory_->createPeer(
-                getAddress(), PublicKeyHexStringView{keypair.publicKey()}))
-            .value()
-            .value;
-    iroha_instance_->initPipeline(keypair, maximum_proposal_size_);
+    signer_ = std::move(signer);
+    this_peer_ = framework::expected::val(
+                     common_objects_factory_->createPeer(
+                         getAddress(),
+                         PublicKeyHexStringView{signer_.value()->publicKey()}))
+                     .value()
+                     .value;
+    iroha_instance_->initPipeline(signer_.value(), maximum_proposal_size_);
     log_->info("created pipeline");
   }
 

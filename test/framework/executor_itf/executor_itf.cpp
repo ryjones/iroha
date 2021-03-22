@@ -7,6 +7,7 @@
 
 #include "ametsuchi/specific_query_executor.hpp"
 #include "ametsuchi/tx_executor.hpp"
+#include "cryptography/crypto_provider/crypto_signer.hpp"
 #include "framework/config_helper.hpp"
 #include "framework/test_logger.hpp"
 #include "interfaces/permissions.hpp"
@@ -183,6 +184,6 @@ CommandResult ExecutorItf::createAdmin() const {
   return createUserWithPermsInternal(
       kAdminName,
       kDomain,
-      PublicKeyHexStringView{kAdminKeypair.publicKey()},
+      PublicKeyHexStringView{kAdminSigner->publicKey()},
       all_role_perms);
 }

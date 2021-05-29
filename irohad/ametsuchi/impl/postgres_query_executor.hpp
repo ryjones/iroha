@@ -6,9 +6,9 @@
 #ifndef IROHA_POSTGRES_QUERY_EXECUTOR_HPP
 #define IROHA_POSTGRES_QUERY_EXECUTOR_HPP
 
-#include "ametsuchi/query_executor.hpp"
-
 #include <soci/soci.h>
+
+#include "ametsuchi/query_executor.hpp"
 #include "logger/logger_fwd.hpp"
 
 namespace shared_model {
@@ -25,7 +25,7 @@ namespace iroha {
     class PostgresQueryExecutor : public QueryExecutor {
      public:
       PostgresQueryExecutor(
-          std::unique_ptr<soci::session> sql,
+          std::shared_ptr<soci::session> const &sql,
           std::shared_ptr<shared_model::interface::QueryResponseFactory>
               response_factory,
           std::shared_ptr<SpecificQueryExecutor> specific_query_executor,
@@ -42,7 +42,7 @@ namespace iroha {
       template <class Q>
       bool validateSignatures(const Q &query);
 
-      std::unique_ptr<soci::session> sql_;
+      std::shared_ptr<soci::session> sql_;
       std::shared_ptr<SpecificQueryExecutor> specific_query_executor_;
       std::shared_ptr<shared_model::interface::QueryResponseFactory>
           query_response_factory_;

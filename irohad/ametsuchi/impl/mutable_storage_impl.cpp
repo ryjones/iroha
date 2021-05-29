@@ -6,8 +6,10 @@
 #include "ametsuchi/impl/mutable_storage_impl.hpp"
 
 #include <fmt/core.h>
+
 #include <boost/variant/apply_visitor.hpp>
 #include <stdexcept>
+
 #include "ametsuchi/command_executor.hpp"
 #include "ametsuchi/impl/peer_query_wsv.hpp"
 #include "ametsuchi/impl/postgres_block_index.hpp"
@@ -43,7 +45,7 @@ namespace iroha {
           block_storage_(std::move(block_storage)),
           committed(false),
           log_(log_manager->getLogger()) {
-      sql_ << "BEGIN";
+      *sql() << "BEGIN";
     }
 
     bool MutableStorageImpl::applyBlockIf(
@@ -95,14 +97,14 @@ namespace iroha {
     template <typename Function>
     bool MutableStorageImpl::withSavepoint(Function &&function) {
       try {
-        sql_ << "SAVEPOINT savepoint_";
+        *sql() << "SAVEPOINT savepoint_";
 
         auto function_executed = std::forward<Function>(function)();
 
         if (function_executed) {
-          sql_ << "RELEASE SAVEPOINT savepoint_";
+          *sql() << "RELEASE SAVEPOINT savepoint_";
         } else {
-          sql_ << "ROLLBACK TO SAVEPOINT savepoint_";
+          *sql() << "ROLLBACK TO SAVEPOINT savepoint_";
         }
         return function_executed;
       } catch (std::exception &e) {
@@ -152,7 +154,7 @@ namespace iroha {
                  | [this]() -> expected::Result<MutableStorage::CommitResult,
                                                 std::string> {
         try {
-          sql_ << "COMMIT";
+          *sql() << "COMMIT";
           committed = true;
         } catch (std::exception &e) {
           return expected::makeError(e.what());
@@ -165,7 +167,7 @@ namespace iroha {
     MutableStorageImpl::~MutableStorageImpl() {
       if (not committed) {
         try {
-          sql_ << "ROLLBACK";
+          *sql() << "ROLLBACK";
         } catch (std::exception &e) {
           log_->warn("Apply has been failed. Reason: {}", e.what());
         }

@@ -176,11 +176,8 @@ namespace iroha {
 
         propagateStateDirectly(current_leader, {vote});
         cluster_order_.switchToNext();
-        auto has_next = cluster_order_.hasNext();
         lock.unlock();
-        if (has_next) {
-          timer_->invokeAfterDelay([this, vote] { this->votingStep(vote); });
-        }
+        timer_->invokeAfterDelay([this, vote] { this->votingStep(vote); });
       }
 
       void Yac::closeRound() {
@@ -236,7 +233,10 @@ namespace iroha {
               auto processing_state =
                   vote_storage_.getProcessingState(proposal_round);
 
-              auto votes = [](const auto &state) { return state.votes; };
+              auto votes =
+                  [](const auto &state) -> const std::vector<VoteMessage> & {
+                return state.votes;
+              };
 
               auto current_round = round_;
               switch (processing_state) {

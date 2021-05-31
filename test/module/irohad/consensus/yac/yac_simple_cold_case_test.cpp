@@ -3,6 +3,8 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
+#include "module/irohad/consensus/yac/yac_fixture.hpp"
+
 #include <iostream>
 #include <memory>
 #include <string>
@@ -13,7 +15,6 @@
 #include "consensus/yac/storage/yac_proposal_storage.hpp"
 
 #include "framework/test_subscriber.hpp"
-#include "module/irohad/consensus/yac/yac_fixture.hpp"
 
 using ::testing::_;
 using ::testing::An;
@@ -26,17 +27,17 @@ using namespace framework::test_subscriber;
 using namespace std;
 
 /**
- * Test provide scenario when yac vote for hash
+ * @given Yac and ordering over some peers
+ * @when yac gets a call to \ref vote()
+ * @then it sends the vote to peers
  */
 TEST_F(YacTest, YacWhenVoting) {
-  cout << "----------|YacWhenAchieveOneVote|----------" << endl;
-
-  EXPECT_CALL(*network, sendState(_, _)).Times(default_peers.size());
-
   YacHash my_hash(initial_round, "my_proposal_hash", "my_block_hash");
 
   auto order = ClusterOrdering::create(default_peers);
   ASSERT_TRUE(order);
+
+  setNetworkOrderCheckerSingleVote(order.value(), my_hash, 20);
 
   yac->vote(my_hash, *order);
 }

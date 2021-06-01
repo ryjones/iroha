@@ -289,6 +289,47 @@ impl Client {
         )
     }
 
+    /// Gets pending transactions from leader with pagination.
+    ///
+    /// # Errors
+    /// Fails if retriving result fails or if version of server doesn't match
+    pub fn get_pending_txs_with_pagination(
+        &mut self,
+        pagination: Pagination,
+    ) -> Result<Vec<Transaction>> {
+        let response = http_client::get(
+            &format!(
+                "http://{}{}",
+                self.torii_url,
+                uri::PENDING_TRANSACTIONS_ON_LEADER_URI
+            ),
+            Vec::new(),
+            Vec::from(pagination),
+        )?;
+        if response.status() == StatusCode::OK {
+            let PendingTransactions(transactions) =
+                VersionedPendingTransactions::decode_versioned(response.body())?
+                    .into_v1()
+                    .ok_or_else(|| error!("Expected pending transaction message version 1."))?
+                    .into();
+            Ok(transactions)
+        } else {
+            Err(error!(
+                "Failed to make query request with HTTP status: {}, {}",
+                response.status(),
+                std::str::from_utf8(response.body()).unwrap_or(""),
+            ))
+        }
+    }
+
+    /// Gets all pending transactions from leader.
+    ///
+    /// # Errors
+    /// Fails if retriving result fails or if version of server doesn't match
+    pub fn get_pending_txs(&mut self) -> Result<Vec<Transaction>> {
+        self.get_pending_txs_with_pagination(Pagination::default())
+    }
+
     /// Tries to find the original transaction in the pending tx queue on the leader peer.
     /// Should be used for an MST case.
     /// Takes pagination as parameter.
@@ -302,41 +343,19 @@ impl Client {
         retry_in: Duration,
         pagination: Pagination,
     ) -> Result<Option<Transaction>> {
-        let pagination: Vec<_> = pagination.into();
         for _ in 0..retry_count {
-            let response = http_client::get(
-                &format!(
-                    "http://{}{}",
-                    self.torii_url,
-                    uri::PENDING_TRANSACTIONS_ON_LEADER_URI
-                ),
-                Vec::new(),
-                pagination.clone(),
-            )?;
-            if response.status() == StatusCode::OK {
-                let pending_transactions: PendingTransactions =
-                    VersionedPendingTransactions::decode_versioned(response.body())?
-                        .into_v1()
-                        .ok_or_else(|| error!("Expected pending transaction message version 1."))?
-                        .into();
-                let transaction = pending_transactions
-                    .into_iter()
-                    .find(|pending_transaction| {
-                        pending_transaction
-                            .payload
-                            .equals_excluding_creation_time(&transaction.payload)
-                    });
-                if transaction.is_some() {
-                    return Ok(transaction);
-                }
-                thread::sleep(retry_in)
-            } else {
-                return Err(error!(
-                    "Failed to make query request with HTTP status: {}, {}",
-                    response.status(),
-                    std::str::from_utf8(response.body()).unwrap_or(""),
-                ));
+            let pending_transactions = self.get_pending_txs_with_pagination(pagination.clone())?;
+            let transaction = pending_transactions
+                .into_iter()
+                .find(|pending_transaction| {
+                    pending_transaction
+                        .payload
+                        .equals_excluding_creation_time(&transaction.payload)
+                });
+            if transaction.is_some() {
+                return Ok(transaction);
             }
+            thread::sleep(retry_in)
         }
         Ok(None)
     }

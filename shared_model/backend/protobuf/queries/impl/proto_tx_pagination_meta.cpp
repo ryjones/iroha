@@ -14,6 +14,7 @@ namespace types = shared_model::interface::types;
 
 using namespace shared_model::proto;
 
+
 TxPaginationMeta::TxPaginationMeta(iroha::protocol::TxPaginationMeta &meta)
     : meta_{meta}, ordering_(meta.ordering()) {
   /// default values

@@ -33,14 +33,12 @@ namespace iroha::ametsuchi {
                       result.assumeError().code,
                       result.assumeError().description));
 
-    common.commit();
     return {};
   }
 
-  RocksDBWsvCommand::RocksDBWsvCommand(std::shared_ptr<RocksDBPort> db_port)
-      : db_port_{std::move(db_port)},
-        db_context_(std::make_shared<RocksDBContext>(db_port_)) {
-    assert(db_port_);
+  RocksDBWsvCommand::RocksDBWsvCommand(
+      std::shared_ptr<RocksDBContext> db_context)
+      : db_context_(std::move(db_context)) {
     assert(db_context_);
   }
 
@@ -468,4 +466,5 @@ namespace iroha::ametsuchi {
                              top_block_info.top_hash.hex());
         });
   }
+
 }  // namespace iroha::ametsuchi

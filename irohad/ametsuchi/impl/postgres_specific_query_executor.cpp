@@ -6,17 +6,15 @@
 
 #include "ametsuchi/impl/postgres_specific_query_executor.hpp"
 
-#include <tuple>
-#include <unordered_map>
-// for debug purpose
-#include <iostream>
-
 #include <boost/algorithm/string/join.hpp>
 #include <boost/algorithm/string/split.hpp>
 #include <boost/range/adaptor/filtered.hpp>
 #include <boost/range/adaptor/transformed.hpp>
 #include <boost/range/algorithm/transform.hpp>
 #include <boost/range/irange.hpp>
+#include <tuple>
+#include <unordered_map>
+
 #include "ametsuchi/block_storage.hpp"
 #include "ametsuchi/impl/executor_common.hpp"
 #include "ametsuchi/impl/soci_std_optional.hpp"
@@ -495,7 +493,6 @@ namespace iroha {
       return executeQuery<QueryTuple, PermissionTuple>(
           applier(query),
           query_hash,
-          //till this line is everything we need
           [&](auto range, auto &) {
             auto range_without_nulls = resultWithoutNulls(std::move(range));
             uint64_t total_size = 0;
@@ -726,7 +723,7 @@ namespace iroha {
         const shared_model::interface::types::HashType &query_hash) {
       char const *related_txs = R"(
           creator_id = :account_id
-          AND asset_id IS NULL 
+          AND asset_id IS NULL
       )";
       const auto &pagination_info = q.paginationMeta();
       auto first_hash = pagination_info.firstTxHash();
@@ -767,7 +764,7 @@ namespace iroha {
         return QueryFallbackCheckResult{
             5, "no account with such id found: " + q.accountId()};
       };
-      
+
       return executeTransactionsQuery(q,
                                       creator_id,
                                       query_hash,

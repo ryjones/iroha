@@ -6,9 +6,10 @@
 #ifndef IROHA_VALIDATORS_COMMON_HPP
 #define IROHA_VALIDATORS_COMMON_HPP
 
-#include <google/protobuf/util/time_util.h>
 
 #include <string>
+#include <google/protobuf/util/time_util.h>
+
 
 namespace shared_model {
   namespace validation {

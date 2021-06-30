@@ -6,15 +6,15 @@
 
 #include "ametsuchi/impl/postgres_specific_query_executor.hpp"
 
+#include <tuple>
+#include <unordered_map>
+
 #include <boost/algorithm/string/join.hpp>
 #include <boost/algorithm/string/split.hpp>
 #include <boost/range/adaptor/filtered.hpp>
 #include <boost/range/adaptor/transformed.hpp>
 #include <boost/range/algorithm/transform.hpp>
 #include <boost/range/irange.hpp>
-#include <tuple>
-#include <unordered_map>
-
 #include "ametsuchi/block_storage.hpp"
 #include "ametsuchi/impl/executor_common.hpp"
 #include "ametsuchi/impl/soci_std_optional.hpp"
@@ -795,7 +795,6 @@ namespace iroha {
       has_all_perm AS ({}),
       t AS (
           SELECT DISTINCT height, hash FROM tx_positions WHERE hash IN ({})
-          --TRANSACTION2
       )
       SELECT height, hash, has_my_perm.perm, has_all_perm.perm FROM t
       RIGHT OUTER JOIN has_my_perm ON TRUE
@@ -1514,7 +1513,6 @@ namespace iroha {
                 select distinct creator_id as t
                 from tx_positions
                 where hash=lower(:tx_hash) 
-                --TRANSACTION3
               ),
               {}
             select

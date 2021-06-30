@@ -37,7 +37,7 @@ use crate::{
     kura::{Kura, KuraTrait},
     maintenance::System,
     prelude::*,
-    queue::{Queue, QueueTrait},
+    queue::Queue,
     sumeragi::{Sumeragi, SumeragiTrait},
     torii::Torii,
 };
@@ -51,22 +51,20 @@ pub const TX_RETRIEVAL_INTERVAL: Duration = Duration::from_millis(100);
 pub struct Iroha<
     W = World,
     G = GenesisNetwork,
-    Q = Queue<W>,
-    S = Sumeragi<Q, G, W>,
+    S = Sumeragi<G, W>,
     K = Kura<W>,
     B = BlockSynchronizer<S, W>,
 > where
     W: WorldTrait,
     G: GenesisNetworkTrait,
-    Q: QueueTrait<World = W>,
-    S: SumeragiTrait<Queue = Q, GenesisNetwork = G, World = W>,
+    S: SumeragiTrait<GenesisNetwork = G, World = W>,
     K: KuraTrait<World = W>,
     B: BlockSynchronizerTrait<Sumeragi = S, World = W>,
 {
     /// World state view
     pub wsv: Arc<WorldStateView<W>>,
     /// Queue of transactions
-    pub queue: AlwaysAddr<Q>,
+    pub queue: Arc<Queue>,
     /// Sumeragi consensus
     pub sumeragi: AlwaysAddr<S>,
     /// Kura - block storage
@@ -74,15 +72,14 @@ pub struct Iroha<
     /// Block synchronization actor
     pub block_sync: AlwaysAddr<B>,
     /// Torii web server
-    pub torii: Option<Torii<Q, S, W>>,
+    pub torii: Option<Torii<S, W>>,
 }
 
-impl<W, G, Q, S, K, B> Iroha<W, G, Q, S, K, B>
+impl<W, G, S, K, B> Iroha<W, G, S, K, B>
 where
     W: WorldTrait,
     G: GenesisNetworkTrait,
-    Q: QueueTrait<World = W>,
-    S: SumeragiTrait<Queue = Q, GenesisNetwork = G, World = W>,
+    S: SumeragiTrait<GenesisNetwork = G, World = W>,
     K: KuraTrait<World = W>,
     B: BlockSynchronizerTrait<Sumeragi = S, World = W>,
 {
@@ -127,14 +124,7 @@ where
                 config.sumeragi_configuration.trusted_peers.peers.clone(),
             ),
         ));
-        let queue = Q::from_configuration(
-            &config.queue_configuration,
-            Arc::clone(&wsv),
-            broker.clone(),
-        )
-        .start()
-        .await
-        .expect_running();
+        let queue = Arc::new(Queue::from_configuration(&config.queue_configuration));
 
         let genesis_network = G::from_configuration(
             &config.genesis_configuration,
@@ -157,7 +147,7 @@ where
             Arc::clone(&wsv),
             validator,
             genesis_network,
-            queue.clone(),
+            Arc::clone(&queue),
             broker.clone(),
         )
         .wrap_err("Failed to initialize Sumeragi.")?
@@ -191,7 +181,7 @@ where
             config.torii_configuration.clone(),
             Arc::clone(&wsv),
             System::new(config),
-            queue.clone(),
+            Arc::clone(&queue),
             sumeragi.clone(),
             (events_sender, events_receiver),
             broker.clone(),

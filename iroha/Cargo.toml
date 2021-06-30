@@ -54,6 +54,7 @@ iroha_futures = { path = "../iroha_futures" }
 iroha_telemetry = { path = "../iroha_telemetry", optional = true }
 iroha_p2p = { version = "=0.1.0", path = "../iroha_p2p" }
 async-trait = "0.1"
+crossbeam = "0.8"
 
 [dev-dependencies]
 hex-literal = "0.2.1"

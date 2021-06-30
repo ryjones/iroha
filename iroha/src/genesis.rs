@@ -16,7 +16,6 @@ use tokio::time;
 
 use self::config::GenesisConfiguration;
 use crate::{
-    queue::QueueTrait,
     sumeragi::{
         network_topology::{GenesisBuilder as GenesisTopologyBuilder, Topology},
         Sumeragi,
@@ -59,9 +58,9 @@ pub trait GenesisNetworkTrait:
     ///
     /// # Errors
     /// Returns error if waiting for peers or genesis round itself fails
-    async fn submit_transactions<Q: QueueTrait, W: WorldTrait>(
+    async fn submit_transactions<W: WorldTrait>(
         &self,
-        sumeragi: &mut Sumeragi<Q, Self, W>,
+        sumeragi: &mut Sumeragi<Self, W>,
     ) -> Result<()> {
         let genesis_topology = self
             .wait_for_peers(sumeragi.peer_id.clone(), sumeragi.topology.clone())

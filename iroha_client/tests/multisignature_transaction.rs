@@ -90,7 +90,7 @@ mod tests {
             .build_transaction(vec![mint_asset.into()], UnlimitedMetadata::new())
             .expect("Failed to create transaction.");
         let transaction = iroha_client
-            .get_original_transaction(&transaction, 3, Duration::from_millis(100))
+            .get_original_transaction(&transaction, 5, Duration::from_millis(100))
             .expect("Failed to query pending transactions.")
             .expect("Found no pending transaction for this account.");
         iroha_client

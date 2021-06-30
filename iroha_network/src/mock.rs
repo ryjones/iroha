@@ -13,7 +13,6 @@ use std::{
     future::Future,
     io,
     pin::Pin,
-    sync::Arc,
     task::{Context, Poll},
     time::Duration,
 };
@@ -123,7 +122,7 @@ where
     let (tx, mut rx) = mpsc::channel(100);
     let _result = ENDPOINTS.insert(server_url.to_owned(), tx);
     while let Some(stream) = rx.recv().await {
-        handler(Arc::clone(&state), Box::new(stream)).await?;
+        handler(state.clone(), Box::new(stream)).await?;
     }
     Err(error!("Connections are closed"))
 }

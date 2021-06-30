@@ -24,7 +24,7 @@ use crate::{
     event::{Consumer, EventsReceiver, EventsSender},
     maintenance::{Health, System},
     prelude::*,
-    queue::{GetPendingTransactions, QueueTrait},
+    queue::Queue,
     smartcontracts::isi::query::VerifiedQueryRequest,
     sumeragi::{
         message::VersionedMessage as SumeragiVersionedMessage, GetLeader, IsLeader, SumeragiTrait,
@@ -34,15 +34,15 @@ use crate::{
 
 /// Main network handler and the only entrypoint of the Iroha.
 #[derive(Debug)]
-pub struct Torii<Q: QueueTrait, S: SumeragiTrait, W: WorldTrait> {
+pub struct Torii<S: SumeragiTrait, W: WorldTrait> {
     config: ToriiConfiguration,
     wsv: Arc<WorldStateView<W>>,
     system: Arc<RwLock<System>>,
     events_sender: EventsSender,
     events_receiver: EventsReceiver,
-    transactions_queue: AlwaysAddr<Q>,
     sumeragi: AlwaysAddr<S>,
     broker: Broker,
+    queue: Arc<Queue>,
 }
 
 /// Errors of torii
@@ -69,6 +69,9 @@ pub enum Error {
     /// The block sync message channel is full. Dropping the incoming message.
     #[error("Transaction is too big")]
     TxTooBig,
+    /// The queue is full
+    #[error("Queue is full")]
+    QueueFull,
     /// Error while getting or setting configuration
     #[error("Configuration error")]
     Config(#[source] ConfigError),
@@ -85,7 +88,7 @@ impl iroha_http_server::http::HttpResponseError for Error {
             | EncodePendingTransactions(_) => {
                 iroha_http_server::http::HTTP_CODE_INTERNAL_SERVER_ERROR
             }
-            TxTooBig | VersionedTransaction(_) | AcceptTransaction(_) => {
+            TxTooBig | VersionedTransaction(_) | AcceptTransaction(_) | QueueFull => {
                 iroha_http_server::http::HTTP_CODE_BAD_REQUEST
             }
             Config(_) => iroha_http_server::http::HTTP_CODE_NOT_FOUND,
@@ -100,14 +103,14 @@ impl iroha_http_server::http::HttpResponseError for Error {
 /// Result type
 pub type Result<T, E = Error> = std::result::Result<T, E>;
 
-impl<Q: QueueTrait, S: SumeragiTrait, W: WorldTrait> Torii<Q, S, W> {
+impl<S: SumeragiTrait, W: WorldTrait> Torii<S, W> {
     /// Construct `Torii` from `ToriiConfiguration`.
     #[allow(clippy::clippy::too_many_arguments)]
     pub fn from_configuration(
         config: ToriiConfiguration,
         wsv: Arc<WorldStateView<W>>,
         system: System,
-        transactions_queue: AlwaysAddr<Q>,
+        queue: Arc<Queue>,
         sumeragi: AlwaysAddr<S>,
         (events_sender, events_receiver): (EventsSender, EventsReceiver),
         broker: Broker,
@@ -118,15 +121,15 @@ impl<Q: QueueTrait, S: SumeragiTrait, W: WorldTrait> Torii<Q, S, W> {
             system: Arc::new(RwLock::new(system)),
             events_sender,
             events_receiver,
-            transactions_queue,
+            queue,
             sumeragi,
             broker,
         }
     }
 
-    fn create_state(&self) -> ToriiState<Q, S, W> {
+    fn create_state(&self) -> ToriiState<S, W> {
         let wsv = Arc::clone(&self.wsv);
-        let transactions_queue = self.transactions_queue.clone();
+        let queue = Arc::clone(&self.queue);
         let sumeragi = self.sumeragi.clone();
         let system = Arc::clone(&self.system);
         let consumers = Arc::new(RwLock::new(Vec::new()));
@@ -139,7 +142,7 @@ impl<Q: QueueTrait, S: SumeragiTrait, W: WorldTrait> Torii<Q, S, W> {
             system,
             consumers,
             events_sender: self.events_sender.clone(),
-            transactions_queue,
+            queue,
             sumeragi,
             broker,
         };
@@ -183,22 +186,22 @@ impl<Q: QueueTrait, S: SumeragiTrait, W: WorldTrait> Torii<Q, S, W> {
 }
 
 #[derive(Debug)]
-struct InnerToriiState<Q: QueueTrait, S: SumeragiTrait, W: WorldTrait> {
+struct InnerToriiState<S: SumeragiTrait, W: WorldTrait> {
     config: ToriiConfiguration,
     wsv: Arc<WorldStateView<W>>,
     consumers: Arc<RwLock<Vec<Consumer>>>,
     system: Arc<RwLock<System>>,
     events_sender: EventsSender,
-    transactions_queue: AlwaysAddr<Q>,
+    queue: Arc<Queue>,
     sumeragi: AlwaysAddr<S>,
     broker: Broker,
 }
 
-type ToriiState<Q, S, W> = Arc<InnerToriiState<Q, S, W>>;
+type ToriiState<S, W> = Arc<InnerToriiState<S, W>>;
 
 #[iroha_futures::telemetry_future]
-async fn handle_instructions<Q: QueueTrait, S: SumeragiTrait, W: WorldTrait>(
-    state: ToriiState<Q, S, W>,
+async fn handle_instructions<S: SumeragiTrait, W: WorldTrait>(
+    state: ToriiState<S, W>,
     _path_params: PathParams,
     _query_params: QueryParams,
     request: RawHttpRequest,
@@ -214,13 +217,13 @@ async fn handle_instructions<Q: QueueTrait, S: SumeragiTrait, W: WorldTrait>(
         state.config.torii_max_instruction_number,
     )
     .map_err(Error::AcceptTransaction)?;
-    state.broker.issue_send(transaction).await;
-    Ok(())
+    #[allow(clippy::map_err_ignore)]
+    state.queue.push(transaction).map_err(|_| Error::QueueFull)
 }
 
 #[iroha_futures::telemetry_future]
-async fn handle_queries<Q: QueueTrait, S: SumeragiTrait, W: WorldTrait>(
-    state: ToriiState<Q, S, W>,
+async fn handle_queries<S: SumeragiTrait, W: WorldTrait>(
+    state: ToriiState<S, W>,
     _path_params: PathParams,
     pagination: Pagination,
     request: VerifiedQueryRequest,
@@ -238,8 +241,8 @@ async fn handle_queries<Q: QueueTrait, S: SumeragiTrait, W: WorldTrait>(
 }
 
 #[iroha_futures::telemetry_future]
-async fn handle_health<Q: QueueTrait, S: SumeragiTrait, W: WorldTrait>(
-    _state: ToriiState<Q, S, W>,
+async fn handle_health<S: SumeragiTrait, W: WorldTrait>(
+    _state: ToriiState<S, W>,
     _path_params: PathParams,
     _query_params: QueryParams,
     _request: RawHttpRequest,
@@ -248,29 +251,32 @@ async fn handle_health<Q: QueueTrait, S: SumeragiTrait, W: WorldTrait>(
 }
 
 #[iroha_futures::telemetry_future]
-async fn handle_pending_transactions_on_leader<Q: QueueTrait, S: SumeragiTrait, W: WorldTrait>(
-    state: ToriiState<Q, S, W>,
+async fn handle_pending_transactions_on_leader<S: SumeragiTrait, W: WorldTrait>(
+    state: ToriiState<S, W>,
     _path_params: PathParams,
     pagination: Pagination,
     _request: RawHttpRequest,
 ) -> Result<VersionedPendingTransactions> {
-    #[allow(clippy::unwrap_used)]
-    let PendingTransactions(pending_transactions) = if state.sumeragi.send(IsLeader).await {
-        state.transactions_queue.send(GetPendingTransactions).await
-    } else {
-        let bytes = Network::send_request_to(
-            state.sumeragi.send(GetLeader).await.address.as_ref(),
-            Request::empty(uri::PENDING_TRANSACTIONS_URI),
-        )
-        .await
-        .map_err(Error::RequestPendingTransactions)?
-        .into_result()
-        .map_err(Error::RequestPendingTransactions)?;
+    if state.sumeragi.send(IsLeader).await {
+        let PendingTransactions(mut waiting) = state.queue.waiting();
+        waiting.sort_by_key(|tx| tx.hash());
+        return Ok(PendingTransactions(waiting.into_iter().paginate(pagination).collect()).into());
+    }
 
+    let leader = state.sumeragi.send(GetLeader).await;
+    let bytes = Network::send_request_to(
+        &leader.address,
+        Request::empty(uri::PENDING_TRANSACTIONS_URI),
+    )
+    .await
+    .map_err(Error::RequestPendingTransactions)?
+    .into_result()
+    .map_err(Error::RequestPendingTransactions)?;
+
+    let PendingTransactions(pending_transactions) =
         VersionedPendingTransactions::decode_versioned(&bytes)
             .map_err(Error::DecodeRequestPendingTransactions)?
-            .into_inner_v1()
-    };
+            .into_inner_v1();
 
     Ok(PendingTransactions(
         pending_transactions
@@ -308,8 +314,8 @@ struct GetConfiguration {
 }
 
 #[iroha_futures::telemetry_future]
-async fn handle_get_configuration<Q: QueueTrait, S: SumeragiTrait, W: WorldTrait>(
-    _state: ToriiState<Q, S, W>,
+async fn handle_get_configuration<S: SumeragiTrait, W: WorldTrait>(
+    _state: ToriiState<S, W>,
     _path_params: PathParams,
     ty: GetConfigurationType,
     Json(GetConfiguration { field }): Json<GetConfiguration>,
@@ -330,8 +336,8 @@ async fn handle_get_configuration<Q: QueueTrait, S: SumeragiTrait, W: WorldTrait
 }
 
 #[iroha_futures::telemetry_future]
-async fn handle_metrics<Q: QueueTrait, S: SumeragiTrait, W: WorldTrait>(
-    state: ToriiState<Q, S, W>,
+async fn handle_metrics<S: SumeragiTrait, W: WorldTrait>(
+    state: ToriiState<S, W>,
     _path_params: PathParams,
     _query_params: QueryParams,
     _request: RawHttpRequest,
@@ -346,8 +352,8 @@ async fn handle_metrics<Q: QueueTrait, S: SumeragiTrait, W: WorldTrait>(
 }
 
 #[iroha_futures::telemetry_future]
-async fn handle_subscription<Q: QueueTrait, S: SumeragiTrait, W: WorldTrait>(
-    state: ToriiState<Q, S, W>,
+async fn handle_subscription<S: SumeragiTrait, W: WorldTrait>(
+    state: ToriiState<S, W>,
     _path_params: PathParams,
     _query_params: QueryParams,
     stream: WebSocketStream,
@@ -361,8 +367,8 @@ async fn handle_subscription<Q: QueueTrait, S: SumeragiTrait, W: WorldTrait>(
 }
 
 #[iroha_futures::telemetry_future]
-async fn handle_requests<Q: QueueTrait, S: SumeragiTrait, W: WorldTrait>(
-    state: ToriiState<Q, S, W>,
+async fn handle_requests<S: SumeragiTrait, W: WorldTrait>(
+    state: ToriiState<S, W>,
     stream: Box<dyn AsyncStream>,
 ) -> iroha_error::Result<()> {
     let state_arc = Arc::clone(&state);
@@ -398,13 +404,17 @@ async fn consume_events(
 }
 
 #[iroha_futures::telemetry_future]
-#[iroha_logger::log("TRACE")]
-async fn handle_request<Q: QueueTrait, S: SumeragiTrait, W: WorldTrait>(
-    state: ToriiState<Q, S, W>,
+#[iroha_logger::log(skip(state, request))]
+async fn handle_request<S: SumeragiTrait, W: WorldTrait>(
+    state: ToriiState<S, W>,
     request: Request,
 ) -> iroha_error::Result<Response> {
+    let uri = request.uri_path.as_ref();
+    let _s = iroha_logger::trace_span!("network", uri);
+    iroha_logger::trace!(uri, "Got request");
+
     #[allow(clippy::pattern_type_mismatch)]
-    match request.uri_path.as_ref() {
+    match uri {
         uri::CONSENSUS_URI
             if request.payload.len() > state.config.torii_max_sumeragi_message_size =>
         {
@@ -436,19 +446,22 @@ async fn handle_request<Q: QueueTrait, S: SumeragiTrait, W: WorldTrait>(
         }
         uri::HEALTH_URI => Ok(Response::empty_ok()),
         uri::PENDING_TRANSACTIONS_URI => {
-            let pending_transactions: VersionedPendingTransactions = state
-                .transactions_queue
-                .send(GetPendingTransactions)
-                .await
-                .into();
+            let PendingTransactions(mut waiting) = state.queue.waiting();
+            waiting.sort_by_key(Transaction::hash);
+            let pending = PendingTransactions(
+                waiting
+                    .into_iter()
+                    .paginate(Pagination::default())
+                    .collect(),
+            );
             Ok(Response::Ok(
-                pending_transactions
+                VersionedPendingTransactions::from(pending)
                     .encode_versioned()
                     .map_err(Error::EncodePendingTransactions)?,
             ))
         }
-        non_supported_uri => {
-            iroha_logger::error!("URI not supported: {}.", &non_supported_uri);
+        _ => {
+            iroha_logger::error!(uri, "URI not supported");
             Ok(Response::InternalError)
         }
     }
@@ -535,7 +548,7 @@ mod tests {
     use crate::{
         config::Configuration,
         genesis::GenesisNetwork,
-        queue::{Queue, QueueTrait},
+        queue::Queue,
         sumeragi::{Sumeragi, SumeragiTrait},
         wsv::World,
     };
@@ -547,8 +560,7 @@ mod tests {
         Configuration::from_path(CONFIGURATION_PATH).expect("Failed to load configuration.")
     }
 
-    async fn create_torii(
-    ) -> Torii<Queue<World>, Sumeragi<Queue<World>, GenesisNetwork, World>, World> {
+    async fn create_torii() -> Torii<Sumeragi<GenesisNetwork, World>, World> {
         let broker = Broker::new();
         let mut config = get_config();
         config
@@ -561,14 +573,7 @@ mod tests {
                 .map(|name| (name.clone(), Domain::new(&name))),
             vec![],
         )));
-        let queue = Queue::from_configuration(
-            &config.queue_configuration,
-            Arc::clone(&wsv),
-            broker.clone(),
-        )
-        .start()
-        .await
-        .expect_running();
+        let queue = Arc::new(Queue::from_configuration(&config.queue_configuration));
         let sumeragi = Sumeragi::from_configuration(
             &config.sumeragi_configuration,
             events_sender.clone(),

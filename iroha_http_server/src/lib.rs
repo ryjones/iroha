@@ -77,7 +77,6 @@ impl<State: Clone + Send + Sync + 'static> Server<State> {
             Err(parse_err) => {
                 consume_bytes(&mut stream, read_size).await?;
                 iroha_logger::error!("Failed to parse incoming HTTP request: {:?}", parse_err);
-                Self::write_all(&HttpResponse::bad_request(), &mut stream).await;
             }
             Ok(Err(preprocess_err_response)) => {
                 consume_bytes(&mut stream, read_size).await?;

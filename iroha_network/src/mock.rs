@@ -28,7 +28,7 @@ use tokio::{
     task, time,
 };
 
-use super::{AsyncStream, Request, Response, State};
+use super::{AsyncStream, Request, Response};
 
 static ENDPOINTS: Lazy<DashMap<String, Sender<RequestStream>>> = Lazy::new(DashMap::new);
 
@@ -114,15 +114,11 @@ pub async fn send_request_to(server_url: &str, request: Request) -> Result<Respo
     Response::try_from(rx.recv().await.unwrap())
 }
 
-pub async fn listen<H, F, S>(
-    state: State<S>,
-    server_url: &str,
-    mut handler: H,
-) -> Result<Infallible>
+pub async fn listen<H, F, S>(state: S, server_url: &str, mut handler: H) -> Result<Infallible>
 where
-    H: Send + FnMut(State<S>, Box<dyn AsyncStream>) -> F,
+    H: Send + FnMut(S, Box<dyn AsyncStream>) -> F,
     F: Send + Future<Output = Result<()>>,
-    State<S>: Send + Sync,
+    S: Clone + Send + Sync + 'static,
 {
     let (tx, mut rx) = mpsc::channel(100);
     let _result = ENDPOINTS.insert(server_url.to_owned(), tx);

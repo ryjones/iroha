@@ -133,7 +133,7 @@ impl<Q: QueueTrait, S: SumeragiTrait, W: WorldTrait> Torii<Q, S, W> {
         let config = self.config.clone();
         let broker = self.broker.clone();
 
-        ToriiState {
+        let state = InnerToriiState {
             config,
             wsv,
             system,
@@ -142,7 +142,8 @@ impl<Q: QueueTrait, S: SumeragiTrait, W: WorldTrait> Torii<Q, S, W> {
             transactions_queue,
             sumeragi,
             broker,
-        }
+        };
+        Arc::new(state)
     }
 
     /// To handle incoming requests `Torii` should be started first.
@@ -153,7 +154,6 @@ impl<Q: QueueTrait, S: SumeragiTrait, W: WorldTrait> Torii<Q, S, W> {
     pub async fn start(self) -> iroha_error::Result<Infallible> {
         let state = self.create_state();
         let connections = Arc::clone(&state.consumers);
-        let state = Arc::new(RwLock::new(state));
         let mut server = Server::new(Arc::clone(&state));
         server.at(uri::INSTRUCTIONS_URI).post(handle_instructions);
         server.at(uri::QUERY_URI).get(handle_queries);
@@ -183,7 +183,7 @@ impl<Q: QueueTrait, S: SumeragiTrait, W: WorldTrait> Torii<Q, S, W> {
 }
 
 #[derive(Debug)]
-struct ToriiState<Q: QueueTrait, S: SumeragiTrait, W: WorldTrait> {
+struct InnerToriiState<Q: QueueTrait, S: SumeragiTrait, W: WorldTrait> {
     config: ToriiConfiguration,
     wsv: Arc<WorldStateView<W>>,
     consumers: Arc<RwLock<Vec<Consumer>>>,
@@ -194,14 +194,16 @@ struct ToriiState<Q: QueueTrait, S: SumeragiTrait, W: WorldTrait> {
     broker: Broker,
 }
 
+type ToriiState<Q, S, W> = Arc<InnerToriiState<Q, S, W>>;
+
 #[iroha_futures::telemetry_future]
 async fn handle_instructions<Q: QueueTrait, S: SumeragiTrait, W: WorldTrait>(
-    state: State<ToriiState<Q, S, W>>,
+    state: ToriiState<Q, S, W>,
     _path_params: PathParams,
     _query_params: QueryParams,
     request: RawHttpRequest,
 ) -> Result<()> {
-    if request.body.len() > state.read().await.config.torii_max_transaction_size {
+    if request.body.len() > state.config.torii_max_transaction_size {
         return Err(Error::TxTooBig);
     }
     let transaction = VersionedTransaction::decode_versioned(&request.body)
@@ -209,23 +211,23 @@ async fn handle_instructions<Q: QueueTrait, S: SumeragiTrait, W: WorldTrait>(
     let transaction: Transaction = transaction.into_inner_v1();
     let transaction = VersionedAcceptedTransaction::from_transaction(
         transaction,
-        state.read().await.config.torii_max_instruction_number,
+        state.config.torii_max_instruction_number,
     )
     .map_err(Error::AcceptTransaction)?;
-    state.read().await.broker.issue_send(transaction).await;
+    state.broker.issue_send(transaction).await;
     Ok(())
 }
 
 #[iroha_futures::telemetry_future]
 async fn handle_queries<Q: QueueTrait, S: SumeragiTrait, W: WorldTrait>(
-    state: State<ToriiState<Q, S, W>>,
+    state: ToriiState<Q, S, W>,
     _path_params: PathParams,
     pagination: Pagination,
     request: VerifiedQueryRequest,
 ) -> Result<QueryResult> {
     let result = request
         .query
-        .execute(&*state.read().await.wsv)
+        .execute(&*state.wsv)
         .map_err(Error::ExecuteQuery)?;
     let result = QueryResult(if let Value::Vec(value) = result {
         Value::Vec(value.into_iter().paginate(pagination).collect())
@@ -237,7 +239,7 @@ async fn handle_queries<Q: QueueTrait, S: SumeragiTrait, W: WorldTrait>(
 
 #[iroha_futures::telemetry_future]
 async fn handle_health<Q: QueueTrait, S: SumeragiTrait, W: WorldTrait>(
-    _state: State<ToriiState<Q, S, W>>,
+    _state: ToriiState<Q, S, W>,
     _path_params: PathParams,
     _query_params: QueryParams,
     _request: RawHttpRequest,
@@ -247,41 +249,28 @@ async fn handle_health<Q: QueueTrait, S: SumeragiTrait, W: WorldTrait>(
 
 #[iroha_futures::telemetry_future]
 async fn handle_pending_transactions_on_leader<Q: QueueTrait, S: SumeragiTrait, W: WorldTrait>(
-    state: State<ToriiState<Q, S, W>>,
+    state: ToriiState<Q, S, W>,
     _path_params: PathParams,
     pagination: Pagination,
     _request: RawHttpRequest,
 ) -> Result<VersionedPendingTransactions> {
     #[allow(clippy::unwrap_used)]
-    let PendingTransactions(pending_transactions) =
-        if state.read().await.sumeragi.send(IsLeader).await {
-            state
-                .read()
-                .await
-                .transactions_queue
-                .send(GetPendingTransactions)
-                .await
-        } else {
-            let bytes = Network::send_request_to(
-                state
-                    .read()
-                    .await
-                    .sumeragi
-                    .send(GetLeader)
-                    .await
-                    .address
-                    .as_ref(),
-                Request::empty(uri::PENDING_TRANSACTIONS_URI),
-            )
-            .await
-            .map_err(Error::RequestPendingTransactions)?
-            .into_result()
-            .map_err(Error::RequestPendingTransactions)?;
+    let PendingTransactions(pending_transactions) = if state.sumeragi.send(IsLeader).await {
+        state.transactions_queue.send(GetPendingTransactions).await
+    } else {
+        let bytes = Network::send_request_to(
+            state.sumeragi.send(GetLeader).await.address.as_ref(),
+            Request::empty(uri::PENDING_TRANSACTIONS_URI),
+        )
+        .await
+        .map_err(Error::RequestPendingTransactions)?
+        .into_result()
+        .map_err(Error::RequestPendingTransactions)?;
 
-            VersionedPendingTransactions::decode_versioned(&bytes)
-                .map_err(Error::DecodeRequestPendingTransactions)?
-                .into_inner_v1()
-        };
+        VersionedPendingTransactions::decode_versioned(&bytes)
+            .map_err(Error::DecodeRequestPendingTransactions)?
+            .into_inner_v1()
+    };
 
     Ok(PendingTransactions(
         pending_transactions
@@ -320,7 +309,7 @@ struct GetConfiguration {
 
 #[iroha_futures::telemetry_future]
 async fn handle_get_configuration<Q: QueueTrait, S: SumeragiTrait, W: WorldTrait>(
-    _state: State<ToriiState<Q, S, W>>,
+    _state: ToriiState<Q, S, W>,
     _path_params: PathParams,
     ty: GetConfigurationType,
     Json(GetConfiguration { field }): Json<GetConfiguration>,
@@ -342,20 +331,12 @@ async fn handle_get_configuration<Q: QueueTrait, S: SumeragiTrait, W: WorldTrait
 
 #[iroha_futures::telemetry_future]
 async fn handle_metrics<Q: QueueTrait, S: SumeragiTrait, W: WorldTrait>(
-    state: State<ToriiState<Q, S, W>>,
+    state: ToriiState<Q, S, W>,
     _path_params: PathParams,
     _query_params: QueryParams,
     _request: RawHttpRequest,
 ) -> Result<HttpResponse> {
-    match state
-        .read()
-        .await
-        .system
-        .read()
-        .await
-        .scrape_metrics()
-        .await
-    {
+    match state.system.read().await.scrape_metrics().await {
         Ok(metrics) => Ok(HttpResponse::ok(Headers::new(), metrics.into())),
         Err(e) => {
             iroha_logger::error!("Failed to scrape metrics: {}", e);
@@ -366,13 +347,11 @@ async fn handle_metrics<Q: QueueTrait, S: SumeragiTrait, W: WorldTrait>(
 
 #[iroha_futures::telemetry_future]
 async fn handle_subscription<Q: QueueTrait, S: SumeragiTrait, W: WorldTrait>(
-    state: State<ToriiState<Q, S, W>>,
+    state: ToriiState<Q, S, W>,
     _path_params: PathParams,
     _query_params: QueryParams,
     stream: WebSocketStream,
 ) -> iroha_error::Result<()> {
-    let state = state.read().await;
-
     // The lock is kept on `consumers` for the whole function so that a consumer can tell the client that it is ready,
     // before sending events.
     let mut consumers = state.consumers.write().await;
@@ -383,7 +362,7 @@ async fn handle_subscription<Q: QueueTrait, S: SumeragiTrait, W: WorldTrait>(
 
 #[iroha_futures::telemetry_future]
 async fn handle_requests<Q: QueueTrait, S: SumeragiTrait, W: WorldTrait>(
-    state: State<ToriiState<Q, S, W>>,
+    state: ToriiState<Q, S, W>,
     stream: Box<dyn AsyncStream>,
 ) -> iroha_error::Result<()> {
     let state_arc = Arc::clone(&state);
@@ -421,14 +400,13 @@ async fn consume_events(
 #[iroha_futures::telemetry_future]
 #[iroha_logger::log("TRACE")]
 async fn handle_request<Q: QueueTrait, S: SumeragiTrait, W: WorldTrait>(
-    state: State<ToriiState<Q, S, W>>,
+    state: ToriiState<Q, S, W>,
     request: Request,
 ) -> iroha_error::Result<Response> {
     #[allow(clippy::pattern_type_mismatch)]
     match request.uri_path.as_ref() {
         uri::CONSENSUS_URI
-            if request.payload.len()
-                > state.read().await.config.torii_max_sumeragi_message_size =>
+            if request.payload.len() > state.config.torii_max_sumeragi_message_size =>
         {
             iroha_logger::error!("Message is too big. Droping");
             Ok(Response::InternalError)
@@ -441,12 +419,7 @@ async fn handle_request<Q: QueueTrait, S: SumeragiTrait, W: WorldTrait>(
                     return Ok(Response::InternalError);
                 }
             };
-            state
-                .read()
-                .await
-                .broker
-                .issue_send(message.into_inner_v1())
-                .await;
+            state.broker.issue_send(message.into_inner_v1()).await;
             Ok(Response::empty_ok())
         }
         uri::BLOCK_SYNC_URI => {
@@ -458,14 +431,12 @@ async fn handle_request<Q: QueueTrait, S: SumeragiTrait, W: WorldTrait>(
                 }
             };
 
-            state.read().await.broker.issue_send(message).await;
+            state.broker.issue_send(message).await;
             Ok(Response::empty_ok())
         }
         uri::HEALTH_URI => Ok(Response::empty_ok()),
         uri::PENDING_TRANSACTIONS_URI => {
             let pending_transactions: VersionedPendingTransactions = state
-                .read()
-                .await
                 .transactions_queue
                 .send(GetPendingTransactions)
                 .await
@@ -635,12 +606,12 @@ mod tests {
     #[tokio::test(flavor = "multi_thread")]
     async fn torii_big_transaction() {
         let torii = create_torii().await;
-        let state = Arc::new(RwLock::new(torii.create_state()));
+        let state = torii.create_state();
         let id = Id {
             name: Default::default(),
             domain_name: Default::default(),
         };
-        let max_transaction_size = state.read().await.config.torii_max_transaction_size;
+        let max_transaction_size = state.config.torii_max_transaction_size;
         let instruction: Instruction = FailBox {
             message: "Fail message".to_owned(),
         }
@@ -681,7 +652,7 @@ mod tests {
     #[tokio::test(flavor = "multi_thread")]
     async fn torii_pagination() {
         let torii = create_torii().await;
-        let state = Arc::new(RwLock::new(torii.create_state()));
+        let state = torii.create_state();
 
         let keys = KeyPair::generate().expect("Failed to generate keys");
 

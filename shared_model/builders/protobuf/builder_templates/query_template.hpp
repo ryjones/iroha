@@ -87,7 +87,7 @@ namespace shared_model {
       /// Set tx pagination meta
       template <typename PageMetaPayload>
       static auto setTxPaginationMeta(
-          PageMetaPayload * page_meta_payload,
+          PageMetaPayload *page_meta_payload,
           interface::types::TransactionsNumberType page_size,
           const std::optional<interface::types::HashType> &first_hash =
               std::nullopt,
@@ -230,6 +230,7 @@ namespace shared_model {
         return queryField([&](auto proto_query) {
           auto query = proto_query->mutable_get_account_transactions();
           query->set_account_id(account_id);
+          // add neccesary fields here
           setTxPaginationMeta(query->mutable_pagination_meta(),
                               page_size,
                               first_hash,

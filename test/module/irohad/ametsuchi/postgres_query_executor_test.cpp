@@ -743,7 +743,7 @@ namespace iroha {
           commitTransactionsBlock(initial_txs, 1);
         }
       }
-
+      // try modifing here
       auto queryPage(
           types::TransactionsNumberType page_size,
           const std::optional<types::HashType> &first_hash = std::nullopt,
@@ -918,7 +918,7 @@ namespace iroha {
         }
         return transactions;
       }
-
+      // modify here
       static shared_model::proto::Query makeQuery(
           types::TransactionsNumberType page_size,
           const std::optional<types::HashType> &first_hash = std::nullopt,

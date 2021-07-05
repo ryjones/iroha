@@ -9,7 +9,6 @@ use std::{
     time::{Duration, SystemTime},
 };
 
-use iroha_actor::Message;
 pub use iroha_data_model::prelude::*;
 use iroha_derive::Io;
 use iroha_error::{Result, WrapErr};
@@ -25,9 +24,6 @@ use crate::{
 };
 
 declare_versioned_with_scale!(VersionedAcceptedTransaction 1..2, Debug, Clone, iroha_derive::FromVariant);
-impl Message for VersionedAcceptedTransaction {
-    type Result = ();
-}
 
 #[allow(clippy::missing_errors_doc)]
 impl VersionedAcceptedTransaction {

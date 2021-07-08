@@ -21,7 +21,6 @@
 #include "module/irohad/common/validators_config.hpp"
 #include "queries.pb.h"
 #include "validators/default_validator.hpp"
-#include <google/protobuf/util/time_util.h>
 
 namespace shared_model {
   namespace proto {
@@ -88,7 +87,7 @@ namespace shared_model {
       /// Set tx pagination meta
       template <typename PageMetaPayload>
       static auto setTxPaginationMeta(
-          PageMetaPayload *page_meta_payload,
+          PageMetaPayload * page_meta_payload,
           interface::types::TransactionsNumberType page_size,
           const std::optional<interface::types::HashType> &first_hash =
               std::nullopt,

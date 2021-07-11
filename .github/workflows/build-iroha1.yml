@@ -304,7 +304,7 @@ jobs:
         run: |
           rm -rf /tmp/.buildx-cache
           mv /tmp/.buildx-cache-new /tmp/.buildx-cache
-      - name: Check if dockertaghash exists in remote registry
+      - name: Check if dockertaghash exists in remote registry, specify output container (image name) and container_tag
         id: dockertag_already
         run: |
           exists=$( curl -fL https://hub.docker.com/v2/repositories/$DOCKERHUB_ORG/iroha-builder/tags |

@@ -434,6 +434,7 @@ jobs:
       - &step_cmake_configure
         name: CMake configure
         run: cmake -B build -DCMAKE_TOOLCHAIN_FILE=$PWD/build-vcpkg/scripts/buildsystems/vcpkg.cmake
+          -DTESTING=ON -DMAKE_BUILD_TYPE=${{ matrix.BuildType }}
           -GNinja ${{ matrix.CMAKE_USE }} -DPACKAGE_DEB=ON
           #-DCMAKE_VERBOSE_MAKEFILE=ON
         ## Takes 13s on regular GitHub runner

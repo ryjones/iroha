@@ -218,7 +218,7 @@ where
         (peer, client)
     }
 
-    /// Creates new network with some ofline peers
+    /// Creates new network with some offline peers
     /// # Panics
     /// Panics if fails to find or decode default configuration
     pub async fn new_with_offline_peers(
@@ -335,7 +335,7 @@ where
                 ..configuration.sumeragi_configuration
             },
             torii_configuration: ToriiConfiguration {
-                torii_p2p_url: self.p2p_address.clone(),
+                torii_p2p_addr: self.p2p_address.clone(),
                 torii_api_url: self.api_address.clone(),
                 ..configuration.torii_configuration
             },

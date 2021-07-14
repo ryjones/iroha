@@ -169,16 +169,11 @@ impl<Q: QueueTrait, S: SumeragiTrait, W: WorldTrait> Torii<Q, S, W> {
             .at(uri::SUBSCRIPTION_URI)
             .web_socket(handle_subscription);
 
-        let (handle_requests_result, http_server_result, _event_consumer_result) = tokio::join!(
-            Network::listen(
-                Arc::clone(&state),
-                &self.config.torii_p2p_url,
-                handle_requests
-            ),
+        let (http_server_result, _event_consumer_result) = tokio::join!(
             server.start(&self.config.torii_api_url),
             consume_events(self.events_receiver, connections),
         );
-        handle_requests_result.and(http_server_result)
+        http_server_result
     }
 }
 
@@ -513,7 +508,7 @@ pub mod config {
     use iroha_config::derive::Configurable;
     use serde::{Deserialize, Serialize};
 
-    const DEFAULT_TORII_P2P_URL: &str = "127.0.0.1:1337";
+    const DEFAULT_TORII_P2P_ADDR: &str = "127.0.0.1:1337";
     const DEFAULT_TORII_API_URL: &str = "127.0.0.1:8080";
     const DEFAULT_TORII_MAX_TRANSACTION_SIZE: usize = 2_usize.pow(15);
     const DEFAULT_TORII_MAX_INSTRUCTION_NUMBER: u64 = 2_u64.pow(12);
@@ -525,7 +520,7 @@ pub mod config {
     #[serde(default)]
     pub struct ToriiConfiguration {
         /// Torii URL for p2p communication for consensus and block synchronization purposes.
-        pub torii_p2p_url: String,
+        pub torii_p2p_addr: String,
         /// Torii URL for client API.
         pub torii_api_url: String,
         /// Maximum number of bytes in raw transaction. Used to prevent from DOS attacks.
@@ -540,7 +535,7 @@ pub mod config {
         fn default() -> Self {
             Self {
                 torii_api_url: DEFAULT_TORII_API_URL.to_owned(),
-                torii_p2p_url: DEFAULT_TORII_P2P_URL.to_owned(),
+                torii_p2p_addr: DEFAULT_TORII_P2P_ADDR.to_owned(),
                 torii_max_transaction_size: DEFAULT_TORII_MAX_TRANSACTION_SIZE,
                 torii_max_sumeragi_message_size: DEFAULT_TORII_MAX_SUMERAGI_MESSAGE_SIZE,
                 torii_max_instruction_number: DEFAULT_TORII_MAX_INSTRUCTION_NUMBER,

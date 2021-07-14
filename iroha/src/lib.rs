@@ -25,6 +25,7 @@ use genesis::GenesisNetworkTrait;
 use iroha_actor::{broker::*, prelude::*};
 use iroha_data_model::prelude::*;
 use iroha_error::{error, Result, WrapErr};
+use iroha_p2p::Network;
 use smartcontracts::permissions::IsInstructionAllowedBoxed;
 use tokio::{sync::mpsc, task::JoinHandle};
 use wsv::{World, WorldTrait};
@@ -38,7 +39,7 @@ use crate::{
     maintenance::System,
     prelude::*,
     queue::{Queue, QueueTrait},
-    sumeragi::{Sumeragi, SumeragiTrait},
+    sumeragi::{NetworkMessage, Sumeragi, SumeragiTrait},
     torii::Torii,
 };
 
@@ -119,6 +120,15 @@ where
 
         //iroha_logger::info!(?config, "Loaded configuration");
 
+        #[allow(clippy::expect_used)]
+        let network = Network::<NetworkMessage>::new(
+            broker.clone(),
+            config.torii_configuration.torii_p2p_addr.clone(),
+        )
+        .await
+        .expect("Unable to start P2P-network");
+        drop(network.start().await);
+
         let (events_sender, events_receiver) = mpsc::channel(100);
         let wsv = Arc::new(WorldStateView::from_config(
             config.wsv_configuration,
@@ -175,7 +185,7 @@ where
             Arc::clone(&wsv),
             sumeragi.clone(),
             PeerId::new(
-                &config.torii_configuration.torii_p2p_url,
+                &config.torii_configuration.torii_p2p_addr,
                 &config.public_key,
             ),
             config

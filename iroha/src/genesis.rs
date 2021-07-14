@@ -1,10 +1,7 @@
 //! This module contains execution Genesis Block logic, and `GenesisBlock` definition.
 #![allow(clippy::module_name_repetitions)]
 
-use std::{
-    collections::HashSet, fmt::Debug, fs::File, io::BufReader, ops::Deref, path::Path,
-    time::Duration,
-};
+use std::{collections::HashSet, fmt::Debug, fs::File, io::BufReader, ops::Deref, path::Path};
 
 use futures::future;
 use iroha_crypto::KeyPair;
@@ -12,7 +9,6 @@ use iroha_data_model::{account::Account, isi::Instruction, prelude::*};
 use iroha_error::{error, Result, WrapErr};
 use iroha_network::{Network, Request, Response};
 use serde::Deserialize;
-use tokio::time;
 
 use self::config::GenesisConfiguration;
 use crate::{
@@ -204,11 +200,12 @@ impl GenesisNetworkTrait for GenesisNetwork {
 
     async fn wait_for_peers(
         &self,
-        this_peer_id: PeerId,
+        _this_peer_id: PeerId,
         network_topology: Topology,
     ) -> Result<Topology> {
         iroha_logger::info!("Waiting for active peers.",);
-        for i in 0..self.wait_for_peers_retry_count {
+        // TODO make check for online peers through new p2p network
+        /*for i in 0..self.wait_for_peers_retry_count {
             if let Ok(topology) = try_get_online_topology(&this_peer_id, &network_topology).await {
                 return Ok(topology);
             }
@@ -217,7 +214,8 @@ impl GenesisNetworkTrait for GenesisNetwork {
             iroha_logger::info!("Retrying to connect in {} ms.", reconnect_in_ms);
             time::sleep(Duration::from_millis(reconnect_in_ms)).await;
         }
-        Err(error!("Waiting for peers failed."))
+        Err(error!("Waiting for peers failed."))*/
+        Ok(network_topology)
     }
 }
 

@@ -78,7 +78,7 @@ impl Configuration {
             private_key: configuration.private_key.clone(),
         };
         configuration.sumeragi_configuration.peer_id = PeerId::new(
-            &configuration.torii_configuration.torii_p2p_url,
+            &configuration.torii_configuration.torii_p2p_addr,
             &configuration.public_key,
         );
         Ok(configuration)
@@ -94,7 +94,7 @@ impl Configuration {
             private_key: self.private_key.clone(),
         };
         self.sumeragi_configuration.peer_id = PeerId::new(
-            &self.torii_configuration.torii_p2p_url,
+            &self.torii_configuration.torii_p2p_addr,
             &self.public_key.clone(),
         );
         Ok(())
@@ -137,7 +137,7 @@ mod tests {
             .wrap_err("Failed to read configuration from example config")?;
         assert_eq!(
             "127.0.0.1:1337",
-            configuration.torii_configuration.torii_p2p_url
+            configuration.torii_configuration.torii_p2p_addr
         );
         assert_eq!(1000, configuration.sumeragi_configuration.block_time_ms);
         Ok(())

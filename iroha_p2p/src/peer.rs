@@ -6,7 +6,8 @@ use std::{
 use async_stream::stream;
 use futures::Stream;
 use iroha_actor::{Actor, Context, Handler, Recipient};
-use iroha_logger::{debug, warn};
+use iroha_data_model::peer::Id;
+use iroha_logger::{debug, info, warn};
 use parity_scale_codec::{Decode, Encode};
 use rand::{Rng, RngCore};
 use tokio::{
@@ -143,7 +144,7 @@ where
         let state = self.state;
         debug!(%state, "Attempting handshake");
         match &self.state {
-            State::Connecting => self.connect().await,
+            State::Connecting => self.connect().await?,
             State::ConnectedTo => self.send_client_hello().await?,
             State::ConnectedFrom => self.read_client_hello().await?,
             State::Ready => warn!("Not doing handshake, already ready."),
@@ -208,7 +209,7 @@ where
     }
 
     /// Creates a connection to other peer
-    async fn connect(&mut self) {
+    async fn connect(&mut self) -> Result<(), Error> {
         let addr = self.id.address.clone();
         let stream = TcpStream::connect(addr.clone()).await;
         match stream {
@@ -217,9 +218,11 @@ where
                 self.read = Some(read);
                 self.write = Some(write);
                 self.state = State::ConnectedTo;
+                Ok(())
             }
-            Err(e) => {
-                warn!(%e, "Could not connect to peer on {}!", addr);
+            Err(error) => {
+                debug!(%error, "Could not connect to peer on {}!", addr);
+                Err(Error::Io(error))
             }
         }
     }
@@ -252,13 +255,19 @@ where
     E: Encryptor + Send + 'static,
 {
     async fn on_start(&mut self, ctx: &mut Context<Self>) {
+        info!("Starting peer for {}", &self.id.address);
         while self.state != State::Ready {
             if let Err(e) = self.handshake().await {
-                warn!(%e, "Error connecting to peer {}, bailing.", &self.id.address);
-                break;
+                // TODO implement retries in state of connection
+                warn!(
+                    "Error connecting to peer {}, bailing. {}",
+                    &self.id.address, e
+                );
+                debug!(%e, "Error connecting to peer {}, bailing.", &self.id.address);
+                return;
             }
         }
-        debug!("Handshake with {:?} finished", &self.id);
+        info!("Handshake with {:?} finished", &self.id);
         #[allow(clippy::unwrap_used)]
         let read: OwnedReadHalf = self.read.take().unwrap();
 
@@ -453,6 +462,15 @@ pub struct PeerId {
     pub address: String,
     /// Public Key of the Peer.
     pub public_key: Option<iroha_crypto::PublicKey>,
+}
+
+impl From<iroha_data_model::peer::Id> for PeerId {
+    fn from(id: Id) -> Self {
+        Self {
+            address: id.address,
+            public_key: Some(id.public_key),
+        }
+    }
 }
 
 /// Just a placeholder, that can skip garbage bytes and generate them.

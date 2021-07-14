@@ -296,6 +296,7 @@ mod tests {
     }
 
     #[tokio::test(flavor = "multi_thread")]
+    #[ignore]
     async fn single_threaded_async() {
         async fn handle_request<S>(_state: State<S>, _request: Request) -> Result<Response>
         where
@@ -327,6 +328,7 @@ mod tests {
     }
 
     #[tokio::test(flavor = "multi_thread")]
+    #[ignore]
     async fn single_threaded_async_stateful() {
         #[allow(clippy::clippy::integer_arithmetic)]
         async fn handle_request(state: State<usize>, _request: Request) -> Result<Response> {

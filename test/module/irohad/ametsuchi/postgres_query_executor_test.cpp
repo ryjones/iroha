@@ -729,7 +729,6 @@ namespace iroha {
           tx_hashes_.emplace_back(tx.hash());
           initial_txs.emplace_back(std::move(tx));
         }
-<<<<<<< HEAD
         if (build_blocks) {
           if (size_diff != 0) {
             commitTransactionsBlock(
@@ -742,17 +741,6 @@ namespace iroha {
           }
         } else {
           commitTransactionsBlock(initial_txs, 1);
-=======
-        if (build_blocks){
-          for (size_t i = 0; i < transactions_amount; i++) {
-            auto current_tx = std::vector<shared_model::proto::Transaction> {initial_txs[i]};
-            auto current_block = createBlock(current_tx, i+1);
-            apply(storage, current_block);
-          }
-        }else {
-          auto block = createBlock(initial_txs, 1);
-          apply(storage, block);
->>>>>>> parent of 0fe2b4aa... tests added, all working
         }
       }
       
@@ -1483,7 +1471,6 @@ namespace iroha {
     TYPED_TEST(GetPagedTransactionsExecutorTest, ValidTimeRange) {
       auto first_tx_time = iroha::time::now();
       this->createTransactionsAndCommit(10);
-<<<<<<< HEAD
       auto last_tx_time = iroha::time::now() + 1;
       auto size = 10;
       auto query_response =
@@ -1492,22 +1479,10 @@ namespace iroha {
           std::move(query_response),
           [this, size](const auto &tx_page_response) {
             EXPECT_EQ(tx_page_response.transactions().size(), size);
-=======
-      auto last_tx_time = iroha::time::now();
-      auto size = 15;
-      auto query_response = this->queryPage(size, std::nullopt, first_tx_time, last_tx_time, std::nullopt, std::nullopt);
-      checkSuccessfulResult<TransactionsPageResponse>(
-          std::move(query_response),
-          [this,  size](const auto &tx_page_response) {
-            EXPECT_EQ(tx_page_response.transactions().size(), 10);
-            this->generalTransactionsPageResponseCheck(
-                tx_page_response, size);
->>>>>>> parent of 0fe2b4aa... tests added, all working
           });
     }
     /**
      * @given initialized storage, user has 10 transactions committed
-<<<<<<< HEAD
      * @when query contains 2 page size
      * @and first tx time is after 2nd transaction
      * @and last tx time is after 5th transaction
@@ -1525,57 +1500,23 @@ namespace iroha {
           std::move(query_response),
           [this, size](const auto &tx_page_response) {
             EXPECT_EQ(tx_page_response.transactions().size(), size);
-=======
-     * @when query contains 15 page size
-     * @and first transaction time is not specified
-     * @and last transaction time is after creating transactions
-     * @then response contains all 10 committed transactions
-     */
-    TYPED_TEST(GetPagedTransactionsExecutorTest, ValidTimeRangeNoBegin) {
-      this->createTransactionsAndCommit(10);
-      auto last_tx_time = iroha::time::now();
-      auto size = 15;
-      auto query_response = this->queryPage(size, std::nullopt, std::nullopt, last_tx_time, std::nullopt, std::nullopt);
-      checkSuccessfulResult<TransactionsPageResponse>(
-          std::move(query_response),
-          [this, size](const auto &tx_page_response) {
-            EXPECT_EQ(tx_page_response.transactions().size(), 10);
-            this->generalTransactionsPageResponseCheck(tx_page_response, size);
->>>>>>> parent of 0fe2b4aa... tests added, all working
           });
     }
     /**
      * @given initialized storage, user has 10 transactions committed
-<<<<<<< HEAD
      * @when query contains 10 page size
      * @and first transaction time is before commiting transactions
      * @then response contains 10 committed transactions
-=======
-     * @when query contains 15 page size
-     * @and first transaction time is before creating transactions
-     * @and last transaction time is not specified
-     * @then response contains all 10 committed transactions
->>>>>>> parent of 0fe2b4aa... tests added, all working
      */
     TYPED_TEST(GetPagedTransactionsExecutorTest, TimeRangeNoEnd) {
       auto first_tx_time = iroha::time::now();
       this->createTransactionsAndCommit(10);
-<<<<<<< HEAD
       auto size = 10;
       auto query_response = this->queryPage(size, std::nullopt, first_tx_time);
       checkSuccessfulResult<TransactionsPageResponse>(
           std::move(query_response),
           [this, size](const auto &tx_page_response) {
             EXPECT_EQ(tx_page_response.transactions().size(), size);
-=======
-      auto size = 15;
-      auto query_response = this->queryPage(size, std::nullopt, first_tx_time, std::nullopt, std::nullopt, std::nullopt);
-      checkSuccessfulResult<TransactionsPageResponse>(
-          std::move(query_response),
-          [this, size](const auto &tx_page_response) {
-            EXPECT_EQ(tx_page_response.transactions().size(), 10);
-            this->generalTransactionsPageResponseCheck(tx_page_response, size);
->>>>>>> parent of 0fe2b4aa... tests added, all working
           });
     }
 
@@ -1599,7 +1540,6 @@ namespace iroha {
     }
 
     /**
-<<<<<<< HEAD
      * @given initialized storage, user has 3 transactions committed
      * @when query contains 2 page size
      * @and first block height is 1
@@ -1615,26 +1555,10 @@ namespace iroha {
           std::move(query_response),
           [this, size](const auto &tx_page_response) {
             EXPECT_EQ(tx_page_response.transactions().size(), size);
-=======
-     * @given initialized storage, user has 10 transactions committed
-     * @when query contains 15 page size
-     * @and first transaction height is 2
-     * @and last transaction height is 5
-     * @then response contains 2 committed transactions
-     */
-    TYPED_TEST(GetPagedTransactionsExecutorTest, ValidHeightRange) {
-      this->createTransactionsAndCommit(10, true);
-      auto size = 15;
-      auto query_response = this->queryPage(size, std::nullopt, std::nullopt, std::nullopt, 2, 5);
-      checkSuccessfulResult<TransactionsPageResponse>(
-          std::move(query_response), [](const auto &tx_page_response) {
-            EXPECT_EQ(tx_page_response.transactions().size(), 2);
->>>>>>> parent of 0fe2b4aa... tests added, all working
           });
     }
     /**
      * @given initialized storage, user has 10 transactions committed
-<<<<<<< HEAD
      * @when query contains 4 page size
      * @and last block height is 5
      * @then response contains 4 committed transactions
@@ -1648,26 +1572,10 @@ namespace iroha {
           std::move(query_response),
           [this, size](const auto &tx_page_response) {
             EXPECT_EQ(tx_page_response.transactions().size(), size);
-=======
-     * @when query contains 15 page size
-     * @and first transaction height is 2
-     * @and last transaction height is not specified
-     * @then response contains 9 committed transactions
-     */
-    TYPED_TEST(GetPagedTransactionsExecutorTest, FirstBlockHeightSpecified) {
-      this->createTransactionsAndCommit(10, true);
-      auto size = 15;
-      auto query_response =
-          this->queryPage(size, std::nullopt, std::nullopt, std::nullopt, 2);
-      checkSuccessfulResult<TransactionsPageResponse>(
-          std::move(query_response), [](const auto &tx_page_response) {
-            EXPECT_EQ(tx_page_response.transactions().size(), 8);
->>>>>>> parent of 0fe2b4aa... tests added, all working
           });
     }
     /**
      * @given initialized storage, user has 10 transactions committed
-<<<<<<< HEAD
      * @when query contains 2 page size
      * @and first block time is before transactions
      * @and last block time is after transactions
@@ -1678,33 +1586,19 @@ namespace iroha {
     TYPED_TEST(GetPagedTransactionsExecutorTest,
                FirstTimeLastTimeFirstHeightLastHeightSpecified) {
       auto first_tx_time = iroha::time::now();
-=======
-     * @when query contains 15 page size
-     * @and first transaction height is not specified
-     * @and last transaction height is 5 
-     * @then response contains 4 committed transactions
-     */
-    TYPED_TEST(GetPagedTransactionsExecutorTest, LastBlockHeightSpecified) {
->>>>>>> parent of 0fe2b4aa... tests added, all working
       this->createTransactionsAndCommit(10, true);
       auto last_tx_time = iroha::time::now();
       auto size = 2;
       auto query_response = this->queryPage(
           size, std::nullopt, first_tx_time, last_tx_time, 2, 5);
       checkSuccessfulResult<TransactionsPageResponse>(
-<<<<<<< HEAD
           std::move(query_response),
           [this, size](const auto &tx_page_response) {
             EXPECT_EQ(tx_page_response.transactions().size(), size);
-=======
-          std::move(query_response), [](const auto &tx_page_response) {
-            EXPECT_EQ(tx_page_response.transactions().size(), 4);
->>>>>>> parent of 0fe2b4aa... tests added, all working
           });
     }
     /**
      * @given initialized storage, user has 10 transactions committed
-<<<<<<< HEAD
      * @when query contains 2 page size
      * @and first block height is 2
      * @and last block height is 5
@@ -1719,22 +1613,6 @@ namespace iroha {
           std::move(query_response),
           [this, size](const auto &tx_page_response) {
             EXPECT_EQ(tx_page_response.transactions().size(), size);
-=======
-     * @when query contains 15 page size
-     * @and first transaction height is not specified
-     * @and last transaction height is not specified
-     * @then response contains 10 committed transactions (genesis block)
-     */
-    TYPED_TEST(GetPagedTransactionsExecutorTest, NoHeightBlockSpecified) {
-      this->createTransactionsAndCommit(10);
-      auto size = 15;
-      auto query_response = this->queryPage(size);
-      checkSuccessfulResult<TransactionsPageResponse>(
-          std::move(query_response),
-          [this, size](const auto &tx_page_response) {
-            EXPECT_EQ(tx_page_response.transactions().size(), 10);
-            this->generalTransactionsPageResponseCheck(tx_page_response, size);
->>>>>>> parent of 0fe2b4aa... tests added, all working
           });
     }
 

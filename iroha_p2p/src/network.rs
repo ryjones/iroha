@@ -161,7 +161,6 @@ where
     type Result = ();
 
     async fn handle(&mut self, msg: Received<T>) {
-        // TODO: send peer id to Torii?
         self.broker.issue_send(msg.data).await;
     }
 }

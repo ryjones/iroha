@@ -1811,6 +1811,7 @@ pub mod transaction {
         Clone,
         iroha_derive::FromVariant,
         IntoSchema,
+        iroha_actor::Message,
     );
 
     /// This structure represents transaction in non-trusted form.
@@ -2003,7 +2004,7 @@ pub mod transaction {
         }
     }
 
-    declare_versioned_with_scale!(VersionedPendingTransactions 1..2, iroha_derive::FromVariant, Clone, Debug);
+    declare_versioned_with_scale!(VersionedPendingTransactions 1..2, iroha_derive::FromVariant, Clone, Debug, iroha_actor::Message);
 
     #[cfg(feature = "http_error")]
     impl std::convert::TryInto<HttpResponse> for VersionedPendingTransactions {

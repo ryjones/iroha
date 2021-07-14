@@ -27,6 +27,7 @@ iroha_crypto = { path = "../iroha_crypto" }
 iroha_derive = { version = "=0.1.0", path = "../iroha_macro/iroha_derive" }
 iroha_macro = { version = "=0.1.0", path = "../iroha_macro" }
 iroha_version = { version = "=0.1.0", path = "../iroha_version" }
+iroha_actor = { version = "=0.1.0", path = "../iroha_actor" }
 iroha_error = { version = "=0.1.0", path = "../iroha_error" }
 iroha_http_server = { version = "=0.1.0", path = "../iroha_http_server", optional = true }
 ursa = "0.3.2"

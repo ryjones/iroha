@@ -744,7 +744,6 @@ namespace iroha {
         }
       }
       
-      // try modifing here
       auto queryPage(
           types::TransactionsNumberType page_size,
           const std::optional<types::HashType> &first_hash = std::nullopt,
@@ -900,7 +899,7 @@ namespace iroha {
         }
         return transactions;
       }
-      
+
       static shared_model::proto::Query makeQuery(
           types::TransactionsNumberType page_size,
           const std::optional<types::HashType> &first_hash = std::nullopt,
@@ -1138,7 +1137,6 @@ namespace iroha {
     }
 
     // ------------------------/ tx pagination tests \----------------------- //
-    //IMPORTANT
     using QueryTxPaginationTestingTypes =
         ::testing::Types<GetAccountTxPaginationImpl,
                          GetAccountAssetTxPaginationImpl>;

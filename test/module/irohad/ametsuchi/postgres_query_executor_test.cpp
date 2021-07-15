@@ -743,7 +743,7 @@ namespace iroha {
           commitTransactionsBlock(initial_txs, 1);
         }
       }
-      
+
       auto queryPage(
           types::TransactionsNumberType page_size,
           const std::optional<types::HashType> &first_hash = std::nullopt,

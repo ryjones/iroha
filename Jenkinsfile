@@ -210,8 +210,7 @@ node ('master') {
         break;
      case 'On open PR':
         // Just hint, not the main way to Notify about build status.
-        ///Disable yellow status @kuvaldini @BulatSaif https://github.com/hyperledger/iroha/pull/1028#issuecomment-872080478
-        //gitNotify ("Jenkins: Merge to trunk", "Please, run: 'Before merge to trunk'", 'PENDING', env.JOB_URL + "/build")
+        gitNotify ("Jenkins: Merge to trunk", "Please, run: 'Before merge to trunk'", 'PENDING', env.JOB_URL + "/build")
         mac_compiler_list = ['appleclang']
         win_compiler_list = ['msvc']
         testList = '()'
@@ -221,8 +220,7 @@ node ('master') {
         codestyle = true
         break;
      case 'Commit in Open PR':
-        ///Disable yellow status @kuvaldini @BulatSaif https://github.com/hyperledger/iroha/pull/1028#issuecomment-872080478
-        // gitNotify ("Jenkins: Merge to trunk", "Please, run: 'Before merge to trunk'", 'PENDING', env.JOB_URL + "/build")
+        gitNotify ("Jenkins: Merge to trunk", "Please, run: 'Before merge to trunk'", 'PENDING', env.JOB_URL + "/build")
         echo "All Default"
         break;
      case 'Before merge to trunk':
@@ -395,7 +393,7 @@ node ('master') {
 
   def s390xLinuxBuildSteps
   def s390xLinuxPostSteps = new Builder.PostSteps()
-  if(false && !s390xlinux_compiler_list.isEmpty()){
+  if(!s390xlinux_compiler_list.isEmpty()){
     s390xLinuxAlwaysPostSteps = new Builder.PostSteps(
       always: [{x64LinuxBuildScript.alwaysPostSteps(scmVars, environmentList, coredumps)}])
     s390xLinuxPostSteps = new Builder.PostSteps(

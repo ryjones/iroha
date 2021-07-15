@@ -722,7 +722,7 @@ namespace iroha {
 
         auto initial_txs = Impl::makeInitialTransactions(transactions_amount);
         auto target_txs = Impl::makeTargetTransactions(transactions_amount);
-
+        auto size_diff = initial_txs.size();
         tx_hashes_.reserve(target_txs.size());
         initial_txs.reserve(initial_txs.size() + target_txs.size());
         for (auto &tx : target_txs) {

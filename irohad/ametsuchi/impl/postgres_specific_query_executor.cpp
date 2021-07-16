@@ -3,7 +3,6 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-
 #include "ametsuchi/impl/postgres_specific_query_executor.hpp"
 
 #include <tuple>
@@ -446,6 +445,7 @@ namespace iroha {
       auto first_hash = pagination_info.firstTxHash();
       // retrieve one extra transaction to populate next_hash
       auto query_size = pagination_info.pageSize() + 1u;
+
       char const *base = R"(WITH
                {0},
                my_txs AS (
@@ -458,8 +458,7 @@ namespace iroha {
                  {7} -- height begin
                  {8} -- height end
                  {1} -- ordering
-                 ),
-                 
+                 ),           
                total_size AS (SELECT COUNT(*) FROM my_txs) {3}
                SELECT my_txs.height, my_txs.index, count, perm FROM my_txs
                {4}
@@ -474,8 +473,7 @@ namespace iroha {
         return this->logAndReturnErrorResponse(QueryErrorType::kStatefulFailed,
                                                "Ordering query failed.",
                                                1,
-                                               query_hash);
-      }
+                                               query_hash);}
       auto query = fmt::format(
           base,
           hasQueryPermissionTarget(creator_id, q.accountId(), perms...),
@@ -712,6 +710,7 @@ namespace iroha {
             return query_response_factory_->createSignatoriesResponse(
                 pubkeys, query_hash);
           },
+
           notEnoughPermissionsResponse(perm_converter_,
                                        Role::kGetMySignatories,
                                        Role::kGetAllSignatories,
@@ -725,9 +724,12 @@ namespace iroha {
           creator_id = :account_id
           AND asset_id IS NULL
       )";
+
       const auto &pagination_info = q.paginationMeta();
       auto first_hash = pagination_info.firstTxHash();
+      // retrieve one extra transaction to populate next_hash
       auto query_size = pagination_info.pageSize() + 1u;
+      
       auto first_tx_time = pagination_info.firstTxTime();
       auto last_tx_time = pagination_info.lastTxTime();
       auto first_tx_height = pagination_info.firstTxHeight();
@@ -803,6 +805,7 @@ namespace iroha {
           getAccountRolePermissionCheckSql(Role::kGetMyTxs, ":account_id"),
           getAccountRolePermissionCheckSql(Role::kGetAllTxs, ":account_id"),
           hash_str);
+      
       return executeQuery<QueryTuple, PermissionTuple>(
           [&] {
             return (sql_.prepare << cmd, soci::use(creator_id, "account_id"));
@@ -1538,6 +1541,7 @@ namespace iroha {
                                      Role::kGetMyEngineReceipts,
                                      Role::kGetAllEngineReceipts,
                                      Role::kGetDomainEngineReceipts));
+
       using QueryTuple =
           QueryType<shared_model::interface::types::CommandIndexType,
                     shared_model::interface::types::AccountIdType,

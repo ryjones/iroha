@@ -6,9 +6,7 @@
 #include "backend/protobuf/queries/proto_tx_pagination_meta.hpp"
 
 #include <google/protobuf/util/time_util.h>
-
 #include <optional>
-
 #include "cryptography/hash.hpp"
 namespace types = shared_model::interface::types;
 

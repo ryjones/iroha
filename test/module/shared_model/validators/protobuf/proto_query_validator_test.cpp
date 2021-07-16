@@ -142,8 +142,8 @@ iroha::protocol::Query generateGetAccountTransactionsQuery(
 
 static std::string valid_tx_hash("123abc");
 static std::string invalid_tx_hash("not_hex");
-static int64_t invalid_timestamp =
-    google::protobuf::util::TimeUtil::kTimestampMaxSeconds + 1;
+// static int64_t invalid_timestamp =
+    // google::protobuf::util::TimeUtil::kTimestampMaxSeconds + 1;
 static int64_t valid_timestamp =
     google::protobuf::util::TimeUtil::kTimestampMinSeconds + 1234;
 static int64_t valid_height = 12;
@@ -204,15 +204,6 @@ INSTANTIATE_TEST_SUITE_P(
     ::testing::Values(
         generateGetAccountAssetTransactionsQuery(invalid_tx_hash),
         generateGetAccountTransactionsQuery(invalid_tx_hash),
-        generateGetAccountAssetTransactionsQuery(std::nullopt,
-                                                 invalid_timestamp),
-        generateGetAccountTransactionsQuery(std::nullopt, invalid_timestamp),
-        generateGetAccountAssetTransactionsQuery(std::nullopt,
-                                                 std::nullopt,
-                                                 invalid_timestamp),
-        generateGetAccountTransactionsQuery(std::nullopt,
-                                            std::nullopt,
-                                            invalid_timestamp),
         generateGetAccountAssetTransactionsQuery(
             std::nullopt, std::nullopt, std::nullopt, invalid_height),
         generateGetAccountTransactionsQuery(

@@ -458,7 +458,7 @@ namespace iroha {
                  {7} -- height begin
                  {8} -- height end
                  {1} -- ordering
-                 ),           
+                 ),
                total_size AS (SELECT COUNT(*) FROM my_txs) {3}
                SELECT my_txs.height, my_txs.index, count, perm FROM my_txs
                {4}
@@ -805,7 +805,7 @@ namespace iroha {
           getAccountRolePermissionCheckSql(Role::kGetMyTxs, ":account_id"),
           getAccountRolePermissionCheckSql(Role::kGetAllTxs, ":account_id"),
           hash_str);
-      
+
       return executeQuery<QueryTuple, PermissionTuple>(
           [&] {
             return (sql_.prepare << cmd, soci::use(creator_id, "account_id"));

@@ -61,12 +61,12 @@ namespace iroha::ametsuchi {
       db_port->initialize(db_name_);
       tx_context_ = std::make_shared<RocksDBContext>(db_port);
 
-      wsv_query =
-          std::make_unique<RocksDBWsvQuery>(db_port, getTestLogger("WsvQuery"));
+      wsv_query = std::make_unique<RocksDBWsvQuery>(tx_context_,
+                                                    getTestLogger("WsvQuery"));
 
       pending_txs_storage = std::make_shared<MockPendingTransactionStorage>();
       executor = std::make_unique<RocksDbCommandExecutor>(
-          db_port, perm_converter, std::nullopt);
+          tx_context_, perm_converter, std::nullopt);
     }
 
     void SetUp() override {

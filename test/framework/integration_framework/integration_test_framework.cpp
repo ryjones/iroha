@@ -6,6 +6,8 @@
 #include "framework/integration_framework/integration_test_framework.hpp"
 
 #include <boost/assert.hpp>
+#include <boost/filesystem.hpp>
+#include <boost/thread/barrier.hpp>
 #include <limits>
 #include <memory>
 
@@ -64,6 +66,7 @@
 using namespace shared_model::crypto;
 using namespace std::literals::string_literals;
 using namespace common_constants;
+namespace fs = boost::filesystem;
 
 using shared_model::interface::types::PublicKeyHexStringView;
 
@@ -151,6 +154,7 @@ class IntegrationTestFramework::CheckerQueue {
 
 IntegrationTestFramework::IntegrationTestFramework(
     size_t maximum_proposal_size,
+    iroha::StorageType db_type,
     const boost::optional<std::string> &dbname,
     iroha::StartupWsvDataPolicy startup_wsv_data_policy,
     bool cleanup_on_exit,
@@ -241,7 +245,24 @@ IntegrationTestFramework::IntegrationTestFramework(
   config_.stale_stream_max_rounds = 2;
   config_.max_proposal_size = 10;
   config_.mst_support = mst_support;
-  config_.block_store_path = block_store_path;
+
+  db_wsv_path_ = (fs::temp_directory_path() / fs::unique_path()).string();
+  db_store_path_ = (fs::temp_directory_path() / fs::unique_path()).string();
+
+  switch (db_type) {
+    case iroha::StorageType::kPostgres: {
+      config_.block_store_path = block_store_path;
+    } break;
+    case iroha::StorageType::kRocksDb: {
+      config_.database_config = IrohadConfig::DbConfig{"rocksdb", db_wsv_path_};
+      config_.block_store_path =
+          !block_store_path ? db_store_path_ : block_store_path;
+    } break;
+    default:
+      assert(!"Unexpected database type.");
+      break;
+  }
+
   config_.torii_port = torii_port_;
   config_.internal_port = port_guard_->getPort(kDefaultInternalPort);
   iroha_instance_ =
@@ -264,6 +285,25 @@ IntegrationTestFramework::~IntegrationTestFramework() {
   if (iroha_instance_ and iroha_instance_->getIrohaInstance()) {
     iroha_instance_->getIrohaInstance()->terminate(
         std::chrono::system_clock::now());
+  }
+
+  try {
+    fs::remove_all(db_wsv_path_);
+    log_->info("WSV data removed successfully from: {}",
+                db_wsv_path_);
+  } catch (std::exception &e) {
+    log_->error("Unable to remove WSV data: {}, because of: {}",
+                db_wsv_path_,
+                e.what());
+  }
+  try {
+    fs::remove_all(db_store_path_);
+    log_->info("STORE data removed successfully from: {}",
+               db_store_path_);
+  } catch (std::exception &e) {
+    log_->error("Unable to remove STORE data: {}, because of: {}",
+                db_store_path_,
+                e.what());
   }
 }
 

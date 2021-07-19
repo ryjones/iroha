@@ -44,16 +44,30 @@ using shared_model::interface::GrantablePermissionSet;
 using shared_model::interface::RolePermissionSet;
 
 RocksDbCommandExecutor::RocksDbCommandExecutor(
-    std::shared_ptr<RocksDBPort> db_port,
+    std::shared_ptr<RocksDBContext> db_context,
     std::shared_ptr<shared_model::interface::PermissionToString> perm_converter,
     std::optional<std::reference_wrapper<const VmCaller>> vm_caller)
-    : db_context_(std::make_shared<RocksDBContext>(db_port)),
+    : db_context_(std::move(db_context)),
       perm_converter_{std::move(perm_converter)},
-      vm_caller_{vm_caller} {
+      vm_caller_{vm_caller},
+      db_transaction_(db_context_) {
   assert(db_context_);
 }
 
 RocksDbCommandExecutor::~RocksDbCommandExecutor() = default;
+
+void RocksDbCommandExecutor::skipChanges() {
+  RocksDbCommon common(db_context_);
+  common.skip();
+}
+
+DatabaseTransaction &RocksDbCommandExecutor::dbSession() {
+  return db_transaction_;
+}
+
+std::shared_ptr<RocksDBContext> RocksDbCommandExecutor::getSession() {
+  return db_context_;
+}
 
 CommandResult RocksDbCommandExecutor::execute(
     const shared_model::interface::Command &cmd,
@@ -99,7 +113,6 @@ CommandResult RocksDbCommandExecutor::execute(
                                          command.toString(),
                                          result.assumeError().description)});
 
-          common.commit();
           return {};
         } catch (std::exception &e) {
           return expected::makeError(CommandError{
@@ -245,8 +258,10 @@ RocksDbCommandExecutor::ExecutionResult RocksDbCommandExecutor::operator()(
   RDB_ERROR_CHECK(forAccount<kDbOperation::kCheck, kDbEntry::kMustExist>(
       common, account_name, domain_id));
 
-  RDB_ERROR_CHECK(forSignatory<kDbOperation::kCheck, kDbEntry::kMustNotExist>(
-      common, account_name, domain_id, command.pubkey()));
+  if (auto result = forSignatory<kDbOperation::kCheck, kDbEntry::kMustNotExist>(
+        common, account_name, domain_id, command.pubkey());
+      expected::hasError(result))
+    return makeError<void>(ErrorCodes::kSignatoryMustNotExists, "Signatory must not exists.");
 
   common.valueBuffer().clear();
   RDB_ERROR_CHECK(forSignatory<kDbOperation::kPut>(

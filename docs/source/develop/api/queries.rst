@@ -55,27 +55,10 @@ Now, the ordering itself:
 
 After ordering is specified, pagination can be executed:
 
-.. code-block:: proto
+.. literalinclude:: ../../../../shared_model/schema/queries.proto
+    :language: proto
+    :lines: 30-50
 
-    message TxPaginationMeta {
-      uint32 page_size = 1;
-      oneof opt_first_tx_hash {
-        string first_tx_hash = 2;
-      }
-      oneof opt_first_tx_time {
-        google.protobuf.Timestamp first_tx_time = 3;
-      }
-      oneof opt_last_tx_time {
-        google.protobuf.Timestamp last_tx_time = 4;
-      }
-      oneof opt_first_tx_height {
-        uint64 first_tx_height = 5;
-      }
-      oneof opt_last_tx_height {
-        uint64 last_tx_height = 6;
-      }
-      Ordering ordering = 7;
-    }
 
 What is added to the request structure in case of pagination
 ------------------------------------------------------------

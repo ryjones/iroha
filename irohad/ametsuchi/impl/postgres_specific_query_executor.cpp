@@ -458,7 +458,7 @@ namespace iroha {
                  {7} -- height begin
                  {8} -- height end
                  {1} -- ordering
-                 ),
+                 ),           
                total_size AS (SELECT COUNT(*) FROM my_txs) {3}
                SELECT my_txs.height, my_txs.index, count, perm FROM my_txs
                {4}
@@ -741,19 +741,19 @@ namespace iroha {
             return (sql_.prepare << query,
                     soci::use(q.accountId(), "account_id"),
                     soci::use(first_hash->hex(), "hash"),
+                    soci::use(query_size, "page_size"),
                     soci::use(first_tx_time, ind, "first_tx_time"),
                     soci::use(last_tx_time, ind, "last_tx_time"),
                     soci::use(first_tx_height, ind, "first_tx_height"),
-                    soci::use(last_tx_height, ind, "last_tx_height"),
-                    soci::use(query_size, "page_size"));
+                    soci::use(last_tx_height, ind, "last_tx_height"));
           } else {
             return (sql_.prepare << query,
                     soci::use(q.accountId(), "account_id"),
+                    soci::use(query_size, "page_size"),
                     soci::use(first_tx_time, ind, "first_tx_time"),
                     soci::use(last_tx_time, ind, "last_tx_time"),
                     soci::use(first_tx_height, ind, "first_tx_height"),
-                    soci::use(last_tx_height, ind, "last_tx_height"),
-                    soci::use(query_size, "page_size"));
+                    soci::use(last_tx_height, ind, "last_tx_height"));
           }
         };
       };
@@ -805,7 +805,7 @@ namespace iroha {
           getAccountRolePermissionCheckSql(Role::kGetMyTxs, ":account_id"),
           getAccountRolePermissionCheckSql(Role::kGetAllTxs, ":account_id"),
           hash_str);
-
+      
       return executeQuery<QueryTuple, PermissionTuple>(
           [&] {
             return (sql_.prepare << cmd, soci::use(creator_id, "account_id"));
@@ -885,20 +885,20 @@ namespace iroha {
                     soci::use(q.accountId(), "account_id"),
                     soci::use(q.assetId(), "asset_id"),
                     soci::use(first_hash->hex(), "hash"),
+                    soci::use(query_size, "page_size"),
                     soci::use(first_tx_time, ind, "first_tx_time"),
                     soci::use(last_tx_time, ind, "last_tx_time"),
                     soci::use(first_tx_height, ind, "first_tx_height"),
-                    soci::use(last_tx_height, ind, "last_tx_height"),
-                    soci::use(query_size, "page_size"));
+                    soci::use(last_tx_height, ind, "last_tx_height"));
           } else {
             return (sql_.prepare << query,
                     soci::use(q.accountId(), "account_id"),
                     soci::use(q.assetId(), "asset_id"),
+                    soci::use(query_size, "page_size"),
                     soci::use(first_tx_time, ind, "first_tx_time"),
                     soci::use(last_tx_time, ind, "last_tx_time"),
                     soci::use(first_tx_height, ind, "first_tx_height"),
-                    soci::use(last_tx_height, ind, "last_tx_height"),
-                    soci::use(query_size, "page_size"));
+                    soci::use(last_tx_height, ind, "last_tx_height"));
           }
         };
       };

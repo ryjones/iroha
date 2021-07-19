@@ -5,17 +5,19 @@
 
 #include "ametsuchi/impl/postgres_query_executor.hpp"
 
+#include <rapidjson/document.h>
+#include <rapidjson/rapidjson.h>
+
+#include <boost/format.hpp>
+#include <boost/range/adaptor/transformed.hpp>
+#include <boost/range/size.hpp>
 #include <chrono>
 #include <cstring>
 #include <iomanip>
 #include <sstream>
 #include <type_traits>
+#include <thread>
 
-#include <rapidjson/document.h>
-#include <rapidjson/rapidjson.h>
-#include <boost/format.hpp>
-#include <boost/range/adaptor/transformed.hpp>
-#include <boost/range/size.hpp>
 #include "ametsuchi/impl/flat_file/flat_file.hpp"
 #include "ametsuchi/impl/postgres_command_executor.hpp"
 #include "ametsuchi/impl/postgres_specific_query_executor.hpp"
@@ -674,19 +676,23 @@ namespace iroha {
         : public GetTransactionsExecutorTest {
      protected:
       using Impl = QueryTxPaginationTest;
-      
-      void commitTransactionsBlock( const std::vector<shared_model::proto::Transaction> txs, size_t height){
+
+      void commitTransactionsBlock(
+          const std::vector<shared_model::proto::Transaction> txs,
+          size_t height) {
         auto block = createBlock(txs, height);
         apply(storage, block);
       }
-      
-      void commitEachTransactionBlock(const std::vector<shared_model::proto::Transaction> txs,
-                        size_t first,
-                        size_t last,
-                        size_t offset) {
-        for (size_t i =first; i < last; i++) {
+
+      void commitEachTransactionBlock(
+          const std::vector<shared_model::proto::Transaction> txs,
+          size_t first,
+          size_t last,
+          size_t offset) {
+        for (size_t i = first; i < last; i++) {
           commitTransactionsBlock(
-              std::vector<shared_model::proto::Transaction>{txs[i]}, i + offset);
+              std::vector<shared_model::proto::Transaction>{txs[i]},
+              i + offset);
         }
       }
       void createTransactionsAndCommitGetTime(size_t transactions_amount,
@@ -717,7 +723,8 @@ namespace iroha {
         commitTransactionsBlock(initial_txs, 1);
       }
       // create valid transactions and commit them
-      void createTransactionsAndCommit(size_t transactions_amount, bool build_blocks = false) {
+      void createTransactionsAndCommit(size_t transactions_amount,
+                                       bool build_blocks = false) {
         addPerms(Impl::getUserPermissions());
 
         auto initial_txs = Impl::makeInitialTransactions(transactions_amount);
@@ -735,9 +742,11 @@ namespace iroha {
                 std::vector<shared_model::proto::Transaction>(
                     initial_txs.begin(), initial_txs.begin() + size_diff + 1),
                 1);
-            commitEachTransactionBlock(initial_txs, size_diff + 1, initial_txs.size(), 0);
+            commitEachTransactionBlock(
+                initial_txs, size_diff + 1, initial_txs.size(), 0);
           } else {
-            commitEachTransactionBlock(initial_txs, size_diff, initial_txs.size(), 1);
+            commitEachTransactionBlock(
+                initial_txs, size_diff, initial_txs.size(), 1);
           }
         } else {
           commitTransactionsBlock(initial_txs, 1);
@@ -747,12 +756,22 @@ namespace iroha {
       auto queryPage(
           types::TransactionsNumberType page_size,
           const std::optional<types::HashType> &first_hash = std::nullopt,
-          const std::optional<types::TimestampType> &first_tx_time = std::nullopt,
-          const std::optional<types::TimestampType> &last_tx_time = std::nullopt,
-          const std::optional<types::HeightType> &first_tx_height = std::nullopt,
-          const std::optional<types::HeightType> &last_tx_height = std::nullopt,
-          const shared_model::interface::Ordering *ordering = nullptr) {
-        auto query = Impl::makeQuery(page_size, first_hash, first_tx_time, last_tx_time, first_tx_height, last_tx_height, ordering);
+          const shared_model::interface::Ordering *ordering = nullptr,
+          const std::optional<types::TimestampType> &first_tx_time =
+              std::nullopt,
+          const std::optional<types::TimestampType> &last_tx_time =
+              std::nullopt,
+          const std::optional<types::HeightType> &first_tx_height =
+              std::nullopt,
+          const std::optional<types::HeightType> &last_tx_height =
+              std::nullopt) {
+        auto query = Impl::makeQuery(page_size,
+                                     first_hash,
+                                     ordering,
+                                     first_tx_time,
+                                     last_tx_time,
+                                     first_tx_height,
+                                     last_tx_height);
         return executeQuery(query);
       }
 
@@ -845,15 +864,26 @@ namespace iroha {
       static shared_model::proto::Query makeQuery(
           types::TransactionsNumberType page_size,
           const std::optional<types::HashType> &first_hash = std::nullopt,
-          const std::optional<types::TimestampType> &first_tx_time = std::nullopt,
-          const std::optional<types::TimestampType> &last_tx_time = std::nullopt,
-          const std::optional<types::HeightType> &first_tx_height = std::nullopt,
-          const std::optional<types::HeightType> &last_tx_height = std::nullopt,
-          const shared_model::interface::Ordering *ordering = nullptr) {
+          const shared_model::interface::Ordering *ordering = nullptr,
+          const std::optional<types::TimestampType> &first_tx_time =
+              std::nullopt,
+          const std::optional<types::TimestampType> &last_tx_time =
+              std::nullopt,
+          const std::optional<types::HeightType> &first_tx_height =
+              std::nullopt,
+          const std::optional<types::HeightType> &last_tx_height =
+              std::nullopt) {
         return TestQueryBuilder()
             .creatorAccountId(account_id)
             .createdTime(iroha::time::now())
-            .getAccountTransactions(account_id, page_size, first_hash, first_tx_time, last_tx_time, first_tx_height, last_tx_height, ordering)
+            .getAccountTransactions(account_id,
+                                    page_size,
+                                    first_hash,
+                                    ordering,
+                                    first_tx_time,
+                                    last_tx_time,
+                                    first_tx_height,
+                                    last_tx_height)
             .build();
       }
     };
@@ -903,16 +933,27 @@ namespace iroha {
       static shared_model::proto::Query makeQuery(
           types::TransactionsNumberType page_size,
           const std::optional<types::HashType> &first_hash = std::nullopt,
-          const std::optional<types::TimestampType> &first_tx_time = std::nullopt,
-          const std::optional<types::TimestampType> &last_tx_time = std::nullopt,
-          const std::optional<types::HeightType> &first_tx_height = std::nullopt,
-          const std::optional<types::HeightType> &last_tx_height = std::nullopt,
-          const shared_model::interface::Ordering *ordering = nullptr) {
+          const shared_model::interface::Ordering *ordering = nullptr,
+          const std::optional<types::TimestampType> &first_tx_time =
+              std::nullopt,
+          const std::optional<types::TimestampType> &last_tx_time =
+              std::nullopt,
+          const std::optional<types::HeightType> &first_tx_height =
+              std::nullopt,
+          const std::optional<types::HeightType> &last_tx_height =
+              std::nullopt) {
         return TestQueryBuilder()
             .creatorAccountId(account_id)
             .createdTime(iroha::time::now())
-            .getAccountAssetTransactions(
-                account_id, asset_id, page_size, first_hash, first_tx_time, last_tx_time, first_tx_height,last_tx_height, ordering)
+            .getAccountAssetTransactions(account_id,
+                                         asset_id,
+                                         page_size,
+                                         first_hash,
+                                         ordering,
+                                         first_tx_time,
+                                         last_tx_time,
+                                         first_tx_height,
+                                         last_tx_height)
             .build();
       }
     };
@@ -1186,7 +1227,7 @@ namespace iroha {
       ordering.append(Ordering::Field::kCreatedTime,
                       Ordering::Direction::kDescending);
 
-      auto query_response = this->queryPage(size, std::nullopt, std::nullopt, std::nullopt, std::nullopt, std::nullopt, & ordering);
+      auto query_response = this->queryPage(size, std::nullopt, &ordering);
       checkSuccessfulResult<TransactionsPageResponse>(
           std::move(query_response),
           [&hashes, size](const auto &tx_page_response) {
@@ -1226,8 +1267,7 @@ namespace iroha {
       ordering.append(Ordering::Field::kPosition,
                       Ordering::Direction::kAscending);
 
-      auto query_response =
-          this->queryPage(size, std::nullopt, std::nullopt, std::nullopt, std::nullopt, std::nullopt, & ordering);
+      auto query_response = this->queryPage(size, std::nullopt, &ordering);
       checkSuccessfulResult<TransactionsPageResponse>(
           std::move(query_response),
           [&hashes, size](const auto &tx_page_response) {
@@ -1260,7 +1300,7 @@ namespace iroha {
       ordering.append(Ordering::Field::kCreatedTime,
                       Ordering::Direction::kAscending);
 
-      auto query_response = this->queryPage(size, std::nullopt, std::nullopt, std::nullopt, std::nullopt, std::nullopt, &ordering);
+      auto query_response = this->queryPage(size, std::nullopt, &ordering);
       checkSuccessfulResult<TransactionsPageResponse>(
           std::move(query_response),
           [&hashes, size](const auto &tx_page_response) {
@@ -1293,7 +1333,7 @@ namespace iroha {
       ordering.append(Ordering::Field::kCreatedTime,
                       Ordering::Direction::kAscending);
 
-      auto query_response = this->queryPage(size, hash, std::nullopt, std::nullopt, std::nullopt, std::nullopt, &ordering);
+      auto query_response = this->queryPage(size, hash, &ordering);
       checkSuccessfulResult<TransactionsPageResponse>(
           std::move(query_response), [&hash](const auto &tx_page_response) {
             EXPECT_EQ(tx_page_response.transactions().size(), 1);
@@ -1322,7 +1362,7 @@ namespace iroha {
       ordering.append(Ordering::Field::kCreatedTime,
                       Ordering::Direction::kDescending);
 
-      auto query_response = this->queryPage(size, hash, std::nullopt, std::nullopt, std::nullopt, std::nullopt, &ordering);
+      auto query_response = this->queryPage(size, hash, &ordering);
       checkSuccessfulResult<TransactionsPageResponse>(
           std::move(query_response),
           [&hash, size](const auto &tx_page_response) {
@@ -1349,7 +1389,7 @@ namespace iroha {
       shared_model::proto::OrderingImpl ordering;
       ordering.append((Ordering::Field)500, (Ordering::Direction)500);
 
-      auto query_response = this->queryPage(size, hash, std::nullopt, std::nullopt, std::nullopt, std::nullopt, & ordering);
+      auto query_response = this->queryPage(size, hash, &ordering);
       checkSuccessfulResult<TransactionsPageResponse>(
           std::move(query_response), [&hash](const auto &tx_page_response) {
             EXPECT_EQ(tx_page_response.transactions().size(), 1);
@@ -1471,8 +1511,8 @@ namespace iroha {
       this->createTransactionsAndCommit(10);
       auto last_tx_time = iroha::time::now() + 1;
       auto size = 10;
-      auto query_response =
-          this->queryPage(size, std::nullopt, first_tx_time, last_tx_time);
+      auto query_response = this->queryPage(
+          size, std::nullopt, nullptr, first_tx_time, last_tx_time);
       checkSuccessfulResult<TransactionsPageResponse>(
           std::move(query_response),
           [this, size](const auto &tx_page_response) {
@@ -1487,13 +1527,15 @@ namespace iroha {
      * @then response contains 3 committed transactions
      */
 
-    TYPED_TEST(GetPagedTransactionsExecutorTest, FirstAndLastTimeSpecifiedInside) {
+    TYPED_TEST(GetPagedTransactionsExecutorTest,
+               FirstAndLastTimeSpecifiedInside) {
       uint64_t first_tx_time;
       uint64_t last_tx_time;
-      this->createTransactionsAndCommitGetTime(10,2,5,first_tx_time,last_tx_time);
+      this->createTransactionsAndCommitGetTime(
+          10, 2, 5, first_tx_time, last_tx_time);
       auto size = 2;
-      auto query_response =
-          this->queryPage(size, std::nullopt, first_tx_time, last_tx_time);
+      auto query_response = this->queryPage(
+          size, std::nullopt, nullptr, first_tx_time, last_tx_time);
       checkSuccessfulResult<TransactionsPageResponse>(
           std::move(query_response),
           [this, size](const auto &tx_page_response) {
@@ -1510,7 +1552,8 @@ namespace iroha {
       auto first_tx_time = iroha::time::now();
       this->createTransactionsAndCommit(10);
       auto size = 10;
-      auto query_response = this->queryPage(size, std::nullopt, first_tx_time);
+      auto query_response =
+          this->queryPage(size, std::nullopt, nullptr, first_tx_time);
       checkSuccessfulResult<TransactionsPageResponse>(
           std::move(query_response),
           [this, size](const auto &tx_page_response) {
@@ -1528,8 +1571,8 @@ namespace iroha {
       this->createTransactionsAndCommit(10);
       auto last_tx_time = iroha::time::now() + 1;
       auto size = 10;
-      auto query_response =
-          this->queryPage(size, std::nullopt, std::nullopt, last_tx_time);
+      auto query_response = this->queryPage(
+          size, std::nullopt, nullptr, std::nullopt, last_tx_time);
       checkSuccessfulResult<TransactionsPageResponse>(
           std::move(query_response),
           [this, size](const auto &tx_page_response) {
@@ -1547,8 +1590,8 @@ namespace iroha {
     TYPED_TEST(GetPagedTransactionsExecutorTest, FirstHeightSpecified) {
       this->createTransactionsAndCommit(3, true);
       auto size = 2;
-      auto query_response =
-          this->queryPage(size, std::nullopt, std::nullopt, std::nullopt, 1);
+      auto query_response = this->queryPage(
+          size, std::nullopt, nullptr, std::nullopt, std::nullopt, 1);
       checkSuccessfulResult<TransactionsPageResponse>(
           std::move(query_response),
           [this, size](const auto &tx_page_response) {
@@ -1564,8 +1607,13 @@ namespace iroha {
     TYPED_TEST(GetPagedTransactionsExecutorTest, LastHeightSpecified) {
       this->createTransactionsAndCommit(10, true);
       auto size = 4;
-      auto query_response = this->queryPage(
-          size, std::nullopt, std::nullopt, std::nullopt, std::nullopt, 5);
+      auto query_response = this->queryPage(size,
+                                            std::nullopt,
+                                            nullptr,
+                                            std::nullopt,
+                                            std::nullopt,
+                                            std::nullopt,
+                                            5);
       checkSuccessfulResult<TransactionsPageResponse>(
           std::move(query_response),
           [this, size](const auto &tx_page_response) {
@@ -1588,7 +1636,7 @@ namespace iroha {
       auto last_tx_time = iroha::time::now();
       auto size = 2;
       auto query_response = this->queryPage(
-          size, std::nullopt, first_tx_time, last_tx_time, 2, 5);
+          size, std::nullopt, nullptr, first_tx_time, last_tx_time, 2, 5);
       checkSuccessfulResult<TransactionsPageResponse>(
           std::move(query_response),
           [this, size](const auto &tx_page_response) {
@@ -1605,8 +1653,8 @@ namespace iroha {
     TYPED_TEST(GetPagedTransactionsExecutorTest, FirstAndLastHeightSpecified) {
       this->createTransactionsAndCommit(10, true);
       auto size = 2;
-      auto query_response =
-          this->queryPage(size, std::nullopt, std::nullopt, std::nullopt, 2, 5);
+      auto query_response = this->queryPage(
+          size, std::nullopt, nullptr, std::nullopt, std::nullopt, 2, 5);
       checkSuccessfulResult<TransactionsPageResponse>(
           std::move(query_response),
           [this, size](const auto &tx_page_response) {

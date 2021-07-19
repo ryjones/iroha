@@ -6,7 +6,9 @@
 #include "backend/protobuf/queries/proto_tx_pagination_meta.hpp"
 
 #include <google/protobuf/util/time_util.h>
+
 #include <optional>
+
 #include "cryptography/hash.hpp"
 namespace types = shared_model::interface::types;
 
@@ -30,6 +32,9 @@ std::optional<types::HashType> TxPaginationMeta::firstTxHash() const {
     return std::nullopt;
   }
   return types::HashType::fromHexString(meta_.first_tx_hash());
+}
+shared_model::interface::Ordering const &TxPaginationMeta::ordering() const {
+  return ordering_;
 }
 // first_tx_time
 std::optional<types::TimestampType> TxPaginationMeta::firstTxTime() const {
@@ -69,7 +74,4 @@ std::optional<types::HeightType> TxPaginationMeta::lastTxHeight() const {
     return std::nullopt;
   }
   return types::HeightType(meta_.last_tx_height());
-}
-shared_model::interface::Ordering const &TxPaginationMeta::ordering() const {
-  return ordering_;
 }

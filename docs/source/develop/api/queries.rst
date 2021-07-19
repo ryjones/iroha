@@ -57,7 +57,8 @@ After ordering is specified, pagination can be executed:
 
 .. literalinclude:: ../../../../shared_model/schema/queries.proto
     :language: proto
-    :lines: 30-50
+    :start-at: message TxPaginationMeta {
+    :end-before: message AssetPaginationMeta {
 
 
 What is added to the request structure in case of pagination
